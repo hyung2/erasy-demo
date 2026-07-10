@@ -1,0 +1,309 @@
+/* Erasy 토스풍 오버라이드 — DESIGN.md(v1.0) 구현. globals.css 다음(마지막) 로드.
+   전략: Astryx 프리빌트 컴포넌트의 안정 클래스(.astryx-button.primary 등, 실측 확인)에
+   unlayered CSS를 얹어 @layer(astryx-base) 위로 override. Tailwind 미사용(oxide hang).
+   스코프: [data-astryx-theme="ink-violet"] (:root·--color-* 미변경). */
+
+/* ============ 2·3·6. 토큰 (브랜드 블루·등급 파스텔·중립·타이포·elevation) ============ */
+[data-astryx-theme="ink-violet"] {
+  --erasy-blue: #0b63f6;
+  --erasy-blue-hover: #0a58dd;
+  --erasy-blue-press: #0950c4;
+  --erasy-blue-tint: #eaf1fe;
+  --erasy-blue-tint-strong: #d7e6fd;
+  --erasy-blue-ink: #0a4fc4;
+
+  --erasy-good: #16a34a;
+  --erasy-good-soft: #e9f8ef;
+  --erasy-good-ink: #0f7a37;
+  --erasy-warn: #f59e0b;
+  --erasy-warn-soft: #fef5e3;
+  --erasy-warn-ink: #a86a00;
+  --erasy-bad: #ef4444;
+  --erasy-bad-soft: #fdecec;
+  --erasy-bad-ink: #c02a2a;
+
+  --erasy-bg: #f7f9fc;
+  --erasy-surface: #ffffff;
+  --erasy-border: #eef1f5;
+  --erasy-track: #eef2f7;
+  --erasy-text: #191f28;
+  --erasy-text-sub: #6b7684;
+  --erasy-text-weak: #8b95a1;
+
+  --erasy-elev-1: 0 1px 2px rgba(17, 24, 39, 0.04), 0 4px 12px rgba(17, 24, 39, 0.05);
+  --erasy-elev-2: 0 2px 6px rgba(17, 24, 39, 0.05), 0 12px 28px rgba(17, 24, 39, 0.08);
+  --erasy-elev-3: 0 8px 20px rgba(17, 24, 39, 0.08), 0 24px 56px rgba(17, 24, 39, 0.12);
+
+  --erasy-score-xl: 3.5rem;
+  --erasy-score-l: 2.75rem;
+
+  --erasy-space-4: 24px;
+  --erasy-space-5: 32px;
+  --erasy-space-6: 48px;
+}
+
+body {
+  background: var(--erasy-bg);
+}
+
+/* ============ 3. 타이포 (점수 대형 스텝 · 본문 15px 상향) ============ */
+.erasy-score-num {
+  font-size: var(--erasy-score-xl);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--erasy-text);
+}
+[data-astryx-theme="ink-violet"] .astryx-text.body {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+/* ============ 4.1 버튼 시스템 (pill · soft shadow · 말랑 상태) ============ */
+/* 실측 클래스: .astryx-button + primary|secondary|ghost|destructive + sm|md|lg */
+[data-astryx-theme="ink-violet"] .astryx-button {
+  border-radius: 9999px !important;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+  font-weight: 600;
+}
+[data-astryx-theme="ink-violet"] .astryx-button.primary {
+  background: var(--erasy-blue);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(11, 99, 246, 0.24);
+}
+[data-astryx-theme="ink-violet"] .astryx-button.primary:hover {
+  background: var(--erasy-blue-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(11, 99, 246, 0.32);
+}
+[data-astryx-theme="ink-violet"] .astryx-button.primary:active {
+  background: var(--erasy-blue-press);
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 2px 6px rgba(11, 99, 246, 0.2);
+}
+[data-astryx-theme="ink-violet"] .astryx-button.secondary {
+  background: var(--erasy-blue-tint);
+  color: var(--erasy-blue-ink);
+  box-shadow: none;
+}
+[data-astryx-theme="ink-violet"] .astryx-button.secondary:hover {
+  background: var(--erasy-blue-tint-strong);
+  transform: translateY(-1px);
+}
+[data-astryx-theme="ink-violet"] .astryx-button.secondary:active {
+  transform: scale(0.98);
+}
+[data-astryx-theme="ink-violet"] .astryx-button.ghost {
+  color: var(--erasy-blue-ink);
+}
+[data-astryx-theme="ink-violet"] .astryx-button.ghost:hover {
+  background: var(--erasy-blue-tint);
+}
+[data-astryx-theme="ink-violet"] .astryx-button.ghost:active {
+  transform: scale(0.98);
+}
+/* 사이즈: 높이·좌우 padding (pill이라 여유) */
+[data-astryx-theme="ink-violet"] .astryx-button.lg {
+  height: 52px;
+  padding-left: 24px;
+  padding-right: 24px;
+  font-size: 16px;
+}
+[data-astryx-theme="ink-violet"] .astryx-button.md {
+  height: 44px;
+  padding-left: 20px;
+  padding-right: 20px;
+  font-size: 15px;
+}
+[data-astryx-theme="ink-violet"] .astryx-button.sm {
+  height: 36px;
+  padding-left: 14px;
+  padding-right: 14px;
+  font-size: 14px;
+}
+
+/* ============ 4.2 카드 (radius · soft shadow) ============ */
+[data-astryx-theme="ink-violet"] .astryx-card {
+  border-radius: 16px;
+  border: 1px solid var(--erasy-border);
+  box-shadow: var(--erasy-elev-1);
+}
+/* 점수·히어로 카드 20px + elev-2 */
+[data-astryx-theme="ink-violet"] .astryx-card.erasy-score-card {
+  border-radius: 20px;
+  box-shadow: var(--erasy-elev-2);
+}
+[data-astryx-theme="ink-violet"] .astryx-clickable-card {
+  border-radius: 16px;
+  border: 1px solid var(--erasy-border);
+  box-shadow: var(--erasy-elev-1);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+[data-astryx-theme="ink-violet"] .astryx-clickable-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--erasy-elev-2);
+}
+
+/* ============ 4.4 배지·토큰 (등급 파스텔) ============ */
+/* "예시 데이터"·"데모" = warning 노랑 유지(정직 표기 강조, 미변경). */
+
+/* ============ 6. Depth & Elevation (Dialog) ============ */
+[data-astryx-theme="ink-violet"] .astryx-dialog {
+  box-shadow: var(--erasy-elev-3);
+  border-radius: 20px;
+}
+
+/* ============ 5. Layout (여백 · max-width 컨테이너) ============ */
+/* 대시보드/앱 본문 중앙 정렬 + 여백. app/(app) 페이지 루트에 .erasy-page 래퍼로 적용. */
+.erasy-page {
+  width: 100%;
+  max-width: 1040px;
+  margin-inline: auto;
+  padding: 40px 24px;
+}
+@media (max-width: 767px) {
+  .erasy-page {
+    padding: 20px;
+  }
+}
+
+/* ============ 게이지 · 축하 모션 (스텝3·4) ============ */
+.erasy-gauge {
+  display: block;
+}
+.erasy-gauge-arc {
+  transition: stroke 0.5s ease;
+}
+.erasy-gauge-num {
+  font-variant-numeric: tabular-nums;
+}
+/* 진입 arc 스윕 0→점수 */
+@keyframes erasy-arc-sweep {
+  from {
+    stroke-dashoffset: var(--erasy-arc-from);
+  }
+  to {
+    stroke-dashoffset: var(--erasy-arc-to);
+  }
+}
+.erasy-gauge-arc.sweep {
+  animation: erasy-arc-sweep 0.9s ease-out forwards;
+}
+/* 80 돌파 bounce */
+@keyframes erasy-score-bounce {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.erasy-score-bounce {
+  animation: erasy-score-bounce 0.42s ease-out;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+/* 링 둘레 green glow pulse 1회 */
+@keyframes erasy-glow-pulse {
+  0% {
+    opacity: 0;
+    r: var(--erasy-glow-r);
+  }
+  40% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+    r: calc(var(--erasy-glow-r) + 10px);
+  }
+}
+.erasy-glow {
+  animation: erasy-glow-pulse 0.7s ease-out;
+}
+/* 축하 배너 soft green */
+.erasy-celebrate-banner {
+  background: var(--erasy-good-soft);
+  color: var(--erasy-good-ink);
+  border: 1px solid #cdeede;
+  border-radius: 14px;
+  padding: 14px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  animation: erasy-banner-in 0.3s ease-out;
+}
+@keyframes erasy-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============ 스캔 계정 카드스택 (hero 메인 이미지 톤) ============ */
+/* 계정 목록을 랜딩 hero 카드스택 스타일로 통일. 위험 계정은 아바타·테두리로 부각. */
+[data-astryx-theme="ink-violet"] .astryx-card.erasy-acct {
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+[data-astryx-theme="ink-violet"] .astryx-card.erasy-acct:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--erasy-elev-2);
+}
+/* 아바타 위험 색군 틴트 (hero av-risk / av-warn / av-safe 재현) */
+[data-astryx-theme="ink-violet"] .erasy-acct.tone-red .astryx-avatar {
+  background: var(--erasy-bad-soft);
+  color: var(--erasy-bad-ink);
+}
+[data-astryx-theme="ink-violet"] .erasy-acct.tone-amber .astryx-avatar {
+  background: var(--erasy-warn-soft);
+  color: var(--erasy-warn-ink);
+}
+[data-astryx-theme="ink-violet"] .erasy-acct.tone-blue .astryx-avatar {
+  background: var(--erasy-blue-tint);
+  color: var(--erasy-blue-ink);
+}
+/* 위험(유출·고위험) 계정: red 테두리 + 은은한 tint로 한눈에 */
+[data-astryx-theme="ink-violet"] .astryx-card.erasy-acct.tone-red {
+  border-color: rgba(239, 68, 68, 0.32);
+  background: linear-gradient(0deg, rgba(239, 68, 68, 0.03), rgba(239, 68, 68, 0.03)), var(--erasy-surface);
+}
+
+/* ============ 8. Responsive ============ */
+@media (max-width: 767px) {
+  .erasy-score-num {
+    font-size: 2.75rem;
+  }
+  [data-astryx-theme="ink-violet"] .astryx-button.lg {
+    width: 100%;
+  }
+}
+
+/* ============ 접근성: prefers-reduced-motion ============ */
+@media (prefers-reduced-motion: reduce) {
+  [data-astryx-theme="ink-violet"] .astryx-button {
+    transition: background-color 0.12s;
+  }
+  [data-astryx-theme="ink-violet"] .astryx-button:hover,
+  [data-astryx-theme="ink-violet"] .astryx-button:active {
+    transform: none;
+  }
+  [data-astryx-theme="ink-violet"] .astryx-clickable-card,
+  [data-astryx-theme="ink-violet"] .astryx-clickable-card:hover,
+  [data-astryx-theme="ink-violet"] .astryx-card.erasy-acct,
+  [data-astryx-theme="ink-violet"] .astryx-card.erasy-acct:hover {
+    transition: none;
+    transform: none;
+  }
+  .erasy-gauge-arc.sweep,
+  .erasy-score-bounce,
+  .erasy-glow,
+  .erasy-celebrate-banner {
+    animation: none;
+  }
+}
