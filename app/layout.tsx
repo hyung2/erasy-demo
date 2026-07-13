@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 // 디자이너 다크 디자인 정본(SUIT 폰트 @import 포함). 전역 단일 스타일시트.
 import "@/theme/erasy-dark.css";
+import { SessionProvider } from "next-auth/react";
 import { DemoStateClient } from "@/components/DemoStateClient";
 
 export const metadata: Metadata = {
@@ -15,9 +16,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko">
+    // suppressHydrationWarning: 브라우저 확장(예: HWP `data-hwp-extension`)이 <html>에 주입하는
+    //   속성으로 인한 하이드레이션 경고 억제. 이 요소 자체에만 적용 → 자식의 실제 미스매치는 가리지 않음.
+    // data-scroll-behavior: CSS scroll-behavior:smooth를 라우트 전환에 명시 opt-in(Next 16 권고).
+    <html lang="ko" suppressHydrationWarning data-scroll-behavior="smooth">
       <body>
-        <DemoStateClient>{children}</DemoStateClient>
+        {/* useSession 등 클라이언트 세션 훅용. JWT 세션이라 서버 세션 prop 주입 없이도 동작. */}
+        <SessionProvider>
+          <DemoStateClient>{children}</DemoStateClient>
+        </SessionProvider>
       </body>
     </html>
   );

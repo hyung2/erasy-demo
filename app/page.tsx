@@ -1,9 +1,9 @@
 'use client';
 
-// 로그인 진입(데모). "구글로 시작하기" → 계정 선택 연출 → /scanning.
-// 정직 표기: 실제 구글 인증 아님. 실인증/백엔드 없음. 디자이너 다크 톤 차용.
+// 로그인 진입. "구글로 시작하기" → 실 Google OAuth(Auth.js v5, 최소 scope) → 콜백 후 /scanning → /dashboard.
+// 실 인증 배선(T2.1). 실동작은 env 시크릿 도착 후 검증. Google 계정 선택은 Google 자체 화면이 담당(기존 가짜 피커 제거).
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import { brand, demo } from '@/content/copy';
 
 function GoogleG({ size = 18 }: { size?: number }) {
@@ -18,14 +18,12 @@ function GoogleG({ size = 18 }: { size?: number }) {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [entering, setEntering] = useState(false);
+  const [pending, setPending] = useState(false);
 
-  function choose() {
-    setEntering(true);
-    setPickerOpen(false);
-    setTimeout(() => router.push('/scanning'), 450);
+  function startLogin() {
+    setPending(true);
+    // 콜백 성공 후 /scanning으로 복귀(스캔 연출 → /dashboard). signIn이 페이지를 이탈시킨다.
+    void signIn('google', { redirectTo: '/scanning' });
   }
 
   return (
@@ -46,37 +44,17 @@ export default function LoginPage() {
           <button
             type="button"
             className="btn btn-google lg"
-            onClick={() => setPickerOpen(true)}
-            disabled={entering}
+            onClick={startLogin}
+            disabled={pending}
           >
             <GoogleG />
             {demo.login.google}
           </button>
-          <p className="auth-eyebrow">{demo.login.eyebrow} · 실제 구글 인증이 아닙니다</p>
+          <p className="auth-eyebrow">{demo.login.eyebrow}</p>
         </div>
 
         <p className="auth-disclaimer">{demo.login.disclaimer}</p>
       </div>
-
-      {pickerOpen && (
-        <div className="modal" onClick={(e) => e.target === e.currentTarget && setPickerOpen(false)}>
-          <div className="modal-box" role="dialog" aria-modal="true" aria-labelledby="picker-title">
-            <h3 id="picker-title">{demo.login.pickerTitle}</h3>
-            <p>{demo.login.pickerNotice}</p>
-            <div className="picker-list">
-              {demo.login.accounts.map((a) => (
-                <button type="button" className="picker-item" key={a.name} onClick={choose}>
-                  <span className="avatar-sm">{a.name.slice(0, 1)}</span>
-                  <span className="p-info">
-                    <span className="p-name">{a.name}</span>
-                    <span className="p-mail">{a.email || '다른 계정으로 계속'}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

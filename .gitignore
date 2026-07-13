@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# local backups (never publish to public repo)
+*.bak
+
 # debug
 npm-debug.log*
 yarn-debug.log*

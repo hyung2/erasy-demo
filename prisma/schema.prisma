@@ -1,0 +1,203 @@
+// 이레이지(Erasy) STEP02 MVP — Prisma 스키마
+// SSOT: 03-step02-mvp/db-schema-draft-T1.4.md (Vault) + G0 컴포넌트 계약
+// 스택 락(T1.2): PostgreSQL + Prisma. enum·String[]는 PostgreSQL 네이티브 사용.
+// 자격증명 미저장 원칙: password/passwordHash 컬럼 부재. 점수 신호는 비번값 없이 표현.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // DB 호스팅 = Neon(serverless). 서버리스는 pooled 연결로 런타임, direct 연결로 migrate.
+  //  - Vercel-Neon 통합은 POSTGRES_PRISMA_URL(pooled)·POSTGRES_URL_NON_POOLING(direct)을 자동 주입.
+  //    Vercel env에서 DATABASE_URL=POSTGRES_PRISMA_URL, DIRECT_URL=POSTGRES_URL_NON_POOLING로 별칭 등록.
+  //  - 로컬 .env는 단일 direct 연결 문자열을 DATABASE_URL·DIRECT_URL 둘 다에 동일 지정 가능.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ── Enums (도메인 SSOT = G0 계약) ──
+enum Provider {
+  google
+  naver
+  kakao
+  apple
+  manual // dummy-data의 email-password → manual
+}
+
+enum Category {
+  social
+  overseas
+  domestic
+}
+
+enum RiskTag {
+  breach
+  reuse
+  dormant
+  no2fa
+  subscription
+}
+
+enum ActionType {
+  password_change
+  delete
+  revoke
+  logout_sessions
+  unsubscribe
+}
+
+// O6 확정: 데모 2상태(queued→done)에서 4상태로 확장(실행 실패·진행 추적)
+enum CleanupStatus {
+  queued
+  in_progress
+  done
+  failed
+}
+
+enum AlertType {
+  breach
+  score_drop
+  recleanup
+}
+
+enum BreachSeverity {
+  high
+  mid
+  low
+}
+
+// T1.1 스파이크: 연결앱 실수집 불가 → F2 시드+직접입력 하이브리드 확정
+enum AccountSource {
+  seed // 페르소나 데모 시드
+  user_input // 사용자 직접 입력
+  oauth_linked // 로그인 provider 본인 계정만(연결앱 조회 아님)
+}
+
+// ── Models ──
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts        Account[]
+  cleanupRequests CleanupRequest[]
+  breaches        Breach[]
+  alerts          Alert[]
+  scoreSnapshots  ScoreSnapshot[]
+}
+
+model Account {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name     String
+  provider Provider
+  category Category
+  source   AccountSource @default(user_input) // 출처 정직 표기(over-claim 방지)
+
+  // ── 점수 산식 입력 신호 (전부 비번값 없이 표현) ──
+  lastUsedAt       DateTime? // null=미상. 휴면(3년+) 판정 원천
+  twoFactorEnabled Boolean   @default(false) // no2fa 신호 = !twoFactorEnabled
+  passwordReused   Boolean   @default(false) // 재사용 신호(불리언만, 비번값 저장 금지)
+  reuseGroupId     String? // opaque 토큰만(평문·비번해시 저장 금지). MVP 기본 미사용
+  breached         Boolean   @default(false) // 유출 캐시 신호(Breach 관계에서 동기화)
+
+  discovered Boolean   @default(false) // 사용자가 몰랐던 계정
+  riskTags   RiskTag[] // 다중 위험 신호 → 신호등 색
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accessLogs      AccessLog[]
+  cleanupRequests CleanupRequest[]
+  breaches        Breach[]
+
+  @@index([userId])
+  @@index([userId, breached])
+  @@index([userId, lastUsedAt])
+  @@index([userId, category])
+  @@index([userId, source])
+}
+
+model AccessLog {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  timestamp  DateTime
+  location   String // "서울, KR" | "미상"
+  device     String // "Chrome / Windows"
+  suspicious Boolean  @default(false)
+
+  @@index([accountId, timestamp])
+}
+
+model CleanupRequest {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  actionType  ActionType
+  deepLink    String? // null=경로 미확보(안내만)
+  status      CleanupStatus @default(queued)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  completedAt DateTime? // done 전이 시각(결과 화면 Before/After 타임라인)
+
+  @@index([userId, status])
+  @@index([accountId])
+}
+
+model Breach {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId String? // 매칭된 계정(있으면). 없으면 서비스명만
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  service       String
+  breachDate    DateTime // 월 정밀도는 01일로 정규화(시드 로더)
+  exposedFields String[] // ["이메일","비밀번호"]
+  advice        String
+  severity      BreachSeverity
+  resolved      Boolean        @default(false)
+
+  @@index([userId, resolved])
+  @@index([accountId])
+}
+
+model Alert {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        AlertType
+  message     String // 대화체 카피
+  triggeredAt DateTime
+  read        Boolean   @default(false)
+
+  @@index([userId, triggeredAt])
+}
+
+model ScoreSnapshot {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score        Int // 계산 결과 이력(SSOT 아님, 스냅샷)
+  coverage     Float // 확인된 계정 비율(정직성 표기)
+  coveredCount Int
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// OAuthToken 모델 제거(H3 least-data, Kit 보안리뷰 T2.4).
+//  로그인 전용 최소 scope(openid/email/profile) + JWT 세션이라 provider 토큰 영속이 불필요.
+//  토큰을 어디에도 저장하지 않는 것이 최선(저장 표면 제거 = 유출 표면 제거).
+//  훗날 백그라운드 갱신 등으로 토큰 보관이 실제로 필요해지면, 그때 AES-GCM 실암호화로 별도 도입.
