@@ -19,7 +19,15 @@ export type Account = {
   lastUsedDays: number;
   unusedMonths: number;
   breached: boolean;
+  // ── W3 점수 엔진 신호(선택 필드 — 시드·엔진용, 기존 FE derive 무영향) ──
+  // 정본: 03-step02-mvp/score-spec-T3.0.md 3장. 미지정 = false(스키마 default와 동일).
+  passwordReused?: boolean; // 재사용 서사: 2015 뽐뿌 유출 비번을 6계정에서 재사용
+  twoFactorEnabled?: boolean; // manual 계정만 점수 신호(OAuth는 provider 위임)
+  discovered?: boolean; // 사용자가 몰랐던 계정("이 중 3개는 모르셨죠")
 };
+
+// 시드 데모 사용자 id — seed.ts·score-service 공용 상수(경로 정본).
+export const DEMO_USER_ID = 'seed-user-demo';
 
 export const linkMethodLabel: Record<LinkMethod, string> = {
   'google-oauth': '구글 로그인',
@@ -86,34 +94,36 @@ export function riskTone(risk: Risk): 'success' | 'warning' | 'error' {
 }
 
 // 계정 24개: 소셜 9(구글4·카카오3·애플2) / 해외 6 / 국내 9. 유출 3, 미사용 12개월+ 7.
+// 점수 신호(W3): 재사용 6(Gmail·Amazon·인터파크·뽐뿌·네이버·토스 — 비밀번호 보유 계정만),
+//   2FA true 4(Gmail·카카오톡·iCloud·토스), discovered 3(Quora·뽐뿌·싸이월드).
 export const accounts: Account[] = [
   // 소셜 구글 4
-  { id: 'a01', service: 'Gmail', category: 'social', linkMethod: 'google-oauth', lastUsedDays: 0, unusedMonths: 0, breached: false },
+  { id: 'a01', service: 'Gmail', category: 'social', linkMethod: 'google-oauth', lastUsedDays: 0, unusedMonths: 0, breached: false, passwordReused: true, twoFactorEnabled: true },
   { id: 'a02', service: 'YouTube', category: 'social', linkMethod: 'google-oauth', lastUsedDays: 1, unusedMonths: 0, breached: false },
   { id: 'a03', service: 'Google Drive', category: 'social', linkMethod: 'google-oauth', lastUsedDays: 5, unusedMonths: 0, breached: false },
   { id: 'a04', service: 'Google Photos', category: 'social', linkMethod: 'google-oauth', lastUsedDays: 40, unusedMonths: 1, breached: false },
   // 소셜 카카오 3
-  { id: 'a05', service: '카카오톡', category: 'social', linkMethod: 'kakao-oauth', lastUsedDays: 0, unusedMonths: 0, breached: false },
+  { id: 'a05', service: '카카오톡', category: 'social', linkMethod: 'kakao-oauth', lastUsedDays: 0, unusedMonths: 0, breached: false, twoFactorEnabled: true },
   { id: 'a06', service: '카카오페이', category: 'social', linkMethod: 'kakao-oauth', lastUsedDays: 3, unusedMonths: 0, breached: false },
   { id: 'a07', service: '카카오스토리', category: 'social', linkMethod: 'kakao-oauth', lastUsedDays: 540, unusedMonths: 18, breached: false },
   // 소셜 애플 2
-  { id: 'a08', service: 'iCloud', category: 'social', linkMethod: 'apple-oauth', lastUsedDays: 2, unusedMonths: 0, breached: false },
+  { id: 'a08', service: 'iCloud', category: 'social', linkMethod: 'apple-oauth', lastUsedDays: 2, unusedMonths: 0, breached: false, twoFactorEnabled: true },
   { id: 'a09', service: 'Apple Music', category: 'social', linkMethod: 'apple-oauth', lastUsedDays: 60, unusedMonths: 2, breached: false },
   // 해외 6
   { id: 'a10', service: 'Netflix', category: 'overseas', linkMethod: 'google-oauth', lastUsedDays: 90, unusedMonths: 3, breached: false },
   { id: 'a11', service: 'Spotify', category: 'overseas', linkMethod: 'google-oauth', lastUsedDays: 390, unusedMonths: 13, breached: false },
-  { id: 'a12', service: 'Amazon', category: 'overseas', linkMethod: 'email-password', lastUsedDays: 365, unusedMonths: 12, breached: false },
+  { id: 'a12', service: 'Amazon', category: 'overseas', linkMethod: 'email-password', lastUsedDays: 365, unusedMonths: 12, breached: false, passwordReused: true },
   { id: 'a13', service: 'Notion', category: 'overseas', linkMethod: 'google-oauth', lastUsedDays: 20, unusedMonths: 0, breached: false },
   { id: 'a14', service: 'Medium', category: 'overseas', linkMethod: 'google-oauth', lastUsedDays: 450, unusedMonths: 15, breached: false },
-  { id: 'a15', service: 'Quora', category: 'overseas', linkMethod: 'kakao-oauth', lastUsedDays: 420, unusedMonths: 14, breached: true },
+  { id: 'a15', service: 'Quora', category: 'overseas', linkMethod: 'kakao-oauth', lastUsedDays: 420, unusedMonths: 14, breached: true, discovered: true },
   // 국내 9 (인터파크·뽐뿌 = 실제 국내 유출 이력 서비스)
-  { id: 'a16', service: '인터파크', category: 'domestic', linkMethod: 'email-password', lastUsedDays: 240, unusedMonths: 8, breached: true },
-  { id: 'a17', service: '뽐뿌', category: 'domestic', linkMethod: 'email-password', lastUsedDays: 600, unusedMonths: 20, breached: true },
-  { id: 'a18', service: '싸이월드', category: 'domestic', linkMethod: 'naver-oauth', lastUsedDays: 1100, unusedMonths: 36, breached: false },
-  { id: 'a19', service: '네이버', category: 'domestic', linkMethod: 'naver-oauth', lastUsedDays: 0, unusedMonths: 0, breached: false },
+  { id: 'a16', service: '인터파크', category: 'domestic', linkMethod: 'email-password', lastUsedDays: 240, unusedMonths: 8, breached: true, passwordReused: true },
+  { id: 'a17', service: '뽐뿌', category: 'domestic', linkMethod: 'email-password', lastUsedDays: 600, unusedMonths: 20, breached: true, passwordReused: true, discovered: true },
+  { id: 'a18', service: '싸이월드', category: 'domestic', linkMethod: 'naver-oauth', lastUsedDays: 1100, unusedMonths: 36, breached: false, discovered: true },
+  { id: 'a19', service: '네이버', category: 'domestic', linkMethod: 'naver-oauth', lastUsedDays: 0, unusedMonths: 0, breached: false, passwordReused: true },
   { id: 'a20', service: '쿠팡', category: 'domestic', linkMethod: 'naver-oauth', lastUsedDays: 4, unusedMonths: 0, breached: false },
   { id: 'a21', service: '배달의민족', category: 'domestic', linkMethod: 'kakao-oauth', lastUsedDays: 7, unusedMonths: 0, breached: false },
-  { id: 'a22', service: '토스', category: 'domestic', linkMethod: 'email-password', lastUsedDays: 1, unusedMonths: 0, breached: false },
+  { id: 'a22', service: '토스', category: 'domestic', linkMethod: 'email-password', lastUsedDays: 1, unusedMonths: 0, breached: false, passwordReused: true, twoFactorEnabled: true },
   { id: 'a23', service: '멜론', category: 'domestic', linkMethod: 'kakao-oauth', lastUsedDays: 50, unusedMonths: 1, breached: false },
   { id: 'a24', service: '11번가', category: 'domestic', linkMethod: 'naver-oauth', lastUsedDays: 200, unusedMonths: 6, breached: false },
 ];
