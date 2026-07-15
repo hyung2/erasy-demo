@@ -10,8 +10,12 @@ import {
   deleteRequests,
   requestTone,
 } from '@/lib/dummy-data';
+import { primaryLink } from '@/lib/deep-links';
 
 type Tab = 'unlink' | 'delete';
+
+// 정리 화면 대표 딥링크 — 유출 점검이 정리 전 첫 확인 지점(과투자 금지, 단일 노출).
+const breachCheck = primaryLink('kidc-breach');
 
 const reqDot = { success: 'is-safe', warning: 'is-warn', neutral: '' } as const;
 
@@ -35,7 +39,7 @@ export default function CleanupPage() {
     candidates.forEach((c) => (next[c.id] = !allSelected));
     setChecked(next);
   }
-  // 요청 접수(연출) — 실제 revoke 없음. 데모 흐름상 안전도 62→85 전환 후 대시보드로.
+  // 요청 접수(연출) — 실제 revoke 없음. 데모 흐름상 안전도 24→90 전환 후 대시보드로.
   function submitRequest() {
     setConfirmOpen(false);
     markCleaned();
@@ -89,6 +93,21 @@ export default function CleanupPage() {
                 </label>
               ))}
             </div>
+
+            {breachCheck && (
+              <div className="cleanup-discovery">
+                <span>정리 전, 유출된 계정이 있는지도 확인해 보세요.</span>
+                <a
+                  className="btn-sm"
+                  href={breachCheck.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={breachCheck.description}
+                >
+                  {breachCheck.label} ↗<span className="sr-only">(새 탭에서 열림)</span>
+                </a>
+              </div>
+            )}
           </section>
 
           {/* 하단 액션 바 */}

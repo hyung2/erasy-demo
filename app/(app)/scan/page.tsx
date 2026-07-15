@@ -15,8 +15,12 @@ import {
   socialCount,
   overseasCount,
 } from '@/lib/dummy-data';
+import { DISCOVERY_PATHS, linksByPath, type DiscoveryPath } from '@/lib/deep-links';
 
 type Filter = 'all' | 'social' | 'overseas' | 'unused';
+
+// 발견 삼각형 3경로 노출 순서(간편가입 → 직접가입 → 유출).
+const PATH_ORDER: DiscoveryPath[] = ['provider-linked', 'self-verify', 'breach-lookup'];
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: '전체' },
@@ -225,6 +229,58 @@ export default function ScanPage() {
               })}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      {/* 놓친 계정 찾기 — 발견 삼각형 3경로(외부 관리 페이지 안내). 자동 조회 아님·본인 확인. */}
+      <section className="panel" aria-label="놓친 계정 찾기">
+        <div className="panel-head">
+          <div>
+            <h3>놓친 계정 찾기</h3>
+            <p className="panel-note">
+              스캔에 안 잡힌 계정은 아래에서 직접 확인해 보세요. 우리가 대신 조회하지 않습니다.
+            </p>
+          </div>
+        </div>
+
+        {PATH_ORDER.map((path) => {
+          const meta = DISCOVERY_PATHS[path];
+          const links = linksByPath(path);
+          return (
+            <div className="discovery-path" key={path}>
+              <div className="discovery-head">
+                <h4>{meta.title}</h4>
+              </div>
+              <p className="discovery-guide">{meta.guide}</p>
+              <div className="discovery-links">
+                {links.map((l) => (
+                  <a
+                    key={l.id}
+                    className="btn btn-secondary compact"
+                    href={l.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={l.description}
+                  >
+                    {l.label}
+                    <span className="ext-arrow" aria-hidden="true">
+                      ↗
+                    </span>
+                    <span className="sr-only">(새 탭에서 열림)</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+
+        <div className="discovery-add">
+          <button type="button" className="btn btn-secondary" disabled>
+            몰랐던 계정 추가
+          </button>
+          <p className="discovery-add-note">
+            확인한 계정 중 목록에 없던 것을 직접 추가할 수 있어요. (직접 추가 입력은 준비 중 · W4)
+          </p>
         </div>
       </section>
 
