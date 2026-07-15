@@ -192,6 +192,7 @@ model ScoreSnapshot {
   score        Int // 계산 결과 이력(SSOT 아님, 스냅샷)
   coverage     Float // 확인된 계정 비율(정직성 표기)
   coveredCount Int
+  axes         Json? // v2 다차원: 4축(E·S·H·T) 값 + measured 플래그. nullable(v1 이력 백필 불요)
   createdAt    DateTime @default(now())
 
   @@index([userId, createdAt])

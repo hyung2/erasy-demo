@@ -1,6 +1,7 @@
 // API 응답 계약(DTO) — BE 응답 shape ↔ FE 훅 타입 1:1 정합의 SSOT.
 // 규약: 모든 성공 응답은 { data } 래핑, 필드는 camelCase. 스텁은 _stub:true 플래그로 실연동 아님을 표기.
 // W2에서 실구현이 이 shape를 그대로 채운다(계약 고정).
+import type { AxisKey, AxisScore, ExpectedGainItem } from './score-v2';
 
 export type ApiEnvelope<T> = {
   data: T;
@@ -20,13 +21,19 @@ export type AccountDTO = {
 };
 
 // GET /api/score — 점수/등급/추이
+// v2 다차원 전환: 기존 필드(score·grade·delta·trend·coverage·coveredCount) shape 불변 = FE 배선 무손상.
+//   axes·weakestAxis·expectedGains는 additive(신규). FE 소비는 T4.4에서 배선.
 export type ScoreDTO = {
-  score: number;
+  score: number; // 종합(composite)
   grade: '양호' | '주의' | '위험';
   delta: number; // 직전 스냅샷 대비
   trend: number[]; // 추이(스냅샷 시계열)
-  coverage: number; // 확인 커버리지(0~1)
+  coverage: number; // 확인 커버리지(0~1) = surface 축(헤드라인)
   coveredCount: number;
+  // ── v2 additive ──
+  axes: Record<AxisKey, AxisScore>; // 4축(E·S·H·T) 상세(raw score·measured·coverage)
+  weakestAxis: AxisKey | null; // 최약축(추천 액션 근거)
+  expectedGains: ExpectedGainItem[]; // 회복 레버별 기대 상승폭(하한 0)
 };
 
 // GET /api/guard — 실시간 가드(알림 + 유출)
