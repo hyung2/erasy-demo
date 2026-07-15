@@ -1,0 +1,5 @@
+# 피싱 도메인 축약본 — 한국인터넷진흥원_피싱사이트 URL (data.go.kr 15109780, 2023-12-31 기준)
+# 원본 CSV(약 27,582행)는 로그인 필요로 미커밋. 이 파일은 scripts/reduce-phishing-csv.ts 산출물(도메인 추출·dedup·정렬).
+# 형식: 도메인 1줄 1개(소문자, www·scheme·path 제거). '#' 주석·빈 줄 무시.
+# 원본 CSV 확보 후: pnpm exec tsx scripts/reduce-phishing-csv.ts <원본.csv> 로 이 파일 갱신.
+# 미적재 상태(도메인 0건)에서는 조회가 항상 "미등재"(매칭 0건 — 정직 표기). 억지 매칭 생성 금지.
