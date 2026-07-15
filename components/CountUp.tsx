@@ -1,6 +1,6 @@
 'use client';
 
-// 수치 카운트업(rAF). 진입 시 0→목표값, 값이 바뀌면 이전값→새값(예: 안전도 62→85).
+// 수치 카운트업(rAF). 진입 시 0→목표값, 값이 바뀌면 이전값→새값(예: 안전도 24→90).
 // prefers-reduced-motion 시 애니 없이 최종값 즉시 표기.
 import { useEffect, useRef, useState } from 'react';
 

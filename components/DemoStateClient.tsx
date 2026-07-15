@@ -1,7 +1,7 @@
 'use client';
 
 // 데모 흐름 상태(라우트 간 유지). root layout에 두어 /dashboard·/cleanup 이동 시에도 보존.
-// 연출 전용 — 실제 백엔드/세션 없음. 정리 완료 여부만 추적해 안전도 62→85 전환에 사용.
+// 연출 전용 — 실제 백엔드/세션 없음. 정리 완료 여부만 추적해 안전도 24→90 전환에 사용.
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 type DemoState = {
