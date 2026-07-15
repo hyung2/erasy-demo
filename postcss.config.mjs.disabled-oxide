@@ -1,0 +1,9 @@
+const config = {
+  plugins: {
+    // "@tailwindcss/postcss": {}, // T0.3b 연장: Windows oxide 네이티브 워커 크래시(0xc0000142·jest-worker retry)
+    // → globals.css의 @import "tailwindcss"가 이미 비활성이라 플러그인도 제거 (생성 CSS 없음 = 시각 영향 0).
+    // Tailwind 유틸 재도입 시 oxide 패치 업그레이드 후 두 곳(여기 + globals.css) 동시 원복.
+  },
+};
+
+export default config;

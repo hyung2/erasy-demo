@@ -10,8 +10,12 @@ import {
   deleteRequests,
   requestTone,
 } from '@/lib/dummy-data';
+import { primaryLink } from '@/lib/deep-links';
 
 type Tab = 'unlink' | 'delete';
+
+// 정리 화면 대표 딥링크 — 유출 점검이 정리 전 첫 확인 지점(과투자 금지, 단일 노출).
+const breachCheck = primaryLink('kidc-breach');
 
 const reqDot = { success: 'is-safe', warning: 'is-warn', neutral: '' } as const;
 
@@ -35,29 +39,30 @@ export default function CleanupPage() {
     candidates.forEach((c) => (next[c.id] = !allSelected));
     setChecked(next);
   }
-  // 요청 접수(연출) — 실제 revoke 없음. 데모 흐름상 안전도 62→85 전환 후 대시보드로.
+  // 요청 접수(연출) — 실제 revoke 없음. 데모 흐름상 안전도 24→90 전환 → 결과 화면(Before/After).
   function submitRequest() {
     setConfirmOpen(false);
     markCleaned();
-    router.push('/dashboard');
+    router.push('/cleanup/result');
   }
 
   return (
     <>
       <div className="page-head">
         <div className="head-left">
-          <h1>정리하기</h1>
+          <h1>계정 정리</h1>
           <span className="badge warn-badge">{candidates.length}건 대기</span>
         </div>
       </div>
+      <p className="page-sub">안 쓰는 소셜 연결을 끊고, 삭제가 필요한 계정은 요청하세요.</p>
 
       {/* 탭 */}
       <div className="chip-row" role="group" aria-label="정리 방식">
         <button type="button" className={`chip${tab === 'unlink' ? ' active' : ''}`} onClick={() => setTab('unlink')}>
-          연결앱 정리
+          소셜 연결 끊기
         </button>
         <button type="button" className={`chip${tab === 'delete' ? ' active' : ''}`} onClick={() => setTab('delete')}>
-          삭제 요청
+          계정 삭제 요청
         </button>
       </div>
 
@@ -74,6 +79,11 @@ export default function CleanupPage() {
               </button>
             </div>
 
+            {/* 액션 설명 슬롯(임시 카피 — Joy 맵 확정 후 교체) */}
+            <p className="action-desc">
+              선택한 연결을 OAuth 표준 방식으로 해제 요청합니다. 지금은 요청만 접수되고, 실제 해제는 로드맵 단계입니다.
+            </p>
+
             <p className="list-label">연결 해제 대상</p>
 
             <div>
@@ -89,6 +99,21 @@ export default function CleanupPage() {
                 </label>
               ))}
             </div>
+
+            {breachCheck && (
+              <div className="cleanup-discovery">
+                <span>정리 전, 유출된 계정이 있는지도 확인해 보세요.</span>
+                <a
+                  className="btn-sm"
+                  href={breachCheck.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={breachCheck.description}
+                >
+                  {breachCheck.label} ↗<span className="sr-only">(새 탭에서 열림)</span>
+                </a>
+              </div>
+            )}
           </section>
 
           {/* 하단 액션 바 */}

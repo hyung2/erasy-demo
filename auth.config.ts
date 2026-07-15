@@ -10,7 +10,10 @@ export const authConfig = {
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       // 로그인 인증 전용 최소 scope. 강력 scope·연결앱 조회 금지(T1.1 스파이크 결정).
-      authorization: { params: { scope: 'openid email profile' } },
+      // prompt=select_account: 로그아웃 후 재로그인 시 구글 계정 선택 화면 강제(다른 계정 접속 허용).
+      authorization: {
+        params: { scope: 'openid email profile', prompt: 'select_account' },
+      },
     }),
   ],
   callbacks: {

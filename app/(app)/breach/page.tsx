@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ServiceAvatar } from '@/components/ServiceAvatar';
+import { BreachPasswordCheck } from '@/components/BreachPasswordCheck';
 import { breaches, unresolvedBreachCount } from '@/lib/dummy-data';
 
 const sevLabel = { high: '높음', mid: '중간', low: '낮음' } as const;
@@ -34,6 +35,9 @@ export default function BreachPage() {
           <p className="score-sub">아래 계정의 안전 조치를 확인하세요.</p>
         </div>
       </section>
+
+      {/* 비밀번호 유출 실측 검사 (HIBP range · 점수 무관 독립 시연) */}
+      <BreachPasswordCheck />
 
       <h2 className="section-label">조치가 필요한 항목 {active.length}건</h2>
 

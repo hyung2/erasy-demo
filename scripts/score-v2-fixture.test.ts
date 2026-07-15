@@ -20,6 +20,7 @@ import {
   type AxisScore,
 } from '../lib/score-v2';
 import { accounts, breaches, deleteRequests } from '../lib/dummy-data';
+import { projectRecovery } from '../lib/score-projection';
 
 let passed = 0;
 function check(cond: boolean, msg: string): void {
@@ -304,6 +305,27 @@ function row(over: Partial<ScoreRowV2>): ScoreRowV2 {
   const rows = anchor.map((r) => ({ ...r, accessLogObserved: false }));
   eq(computeThreat(rows).measured, false, '관측 0: threat 미측정');
   check(computeComposite(rows) !== null, '관측 0: 종합 재정규화 산출(T 제외)');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 6. 회복 투영 정합 — projectRecovery(결과 화면·dashboard cleaned·slide 3곳 통일)
+//    B1 회귀 방지: before=24(앵커), after=93(계단 최종). delete 전삭제(→100) 재발 차단.
+// ══════════════════════════════════════════════════════════════════
+{
+  const proj = projectRecovery();
+  eq(proj.beforeComposite, 24, '투영 before = 24(앵커 정합)');
+  eq(proj.afterComposite, 93, '투영 after = 93(계단 최종)');
+  // 축 before 앵커 정합(투영 입력이 fixture 앵커와 동일 궤적)
+  eq(Math.round(proj.beforeAxes.hygiene.score as number), 9, '투영 before H = 9');
+  eq(Math.round(proj.beforeAxes.threat.score as number), 60, '투영 before T = 60(관측 세팅 정합)');
+  // 회복 후 전 축 상승(비하락)
+  for (const k of proj.axisKeys) {
+    const b = proj.beforeAxes[k];
+    const a = proj.afterAxes[k];
+    if (b.measured && a.measured && b.score !== null && a.score !== null) {
+      check((a.score as number) >= (b.score as number), `투영 ${k} 축 비하락`);
+    }
+  }
 }
 
 // ── 멱등: 2회 실행 drift 0 ──

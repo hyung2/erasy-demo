@@ -759,6 +759,7 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 .page-head .head-left { display: flex; align-items: center; gap: 12px; }
 .page-head .head-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .head-meta { color: var(--text-mute); font-size: 0.8125rem; }
+.page-sub { color: var(--text-dim); font-size: 0.9375rem; margin: -16px 0 24px; }
 .head-meta time { color: var(--text-dim); font-weight: 500; }
 
 .badge {
@@ -854,6 +855,7 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 .stat .num { font-size: 1.75rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .stat .num.danger { color: var(--danger); }
 .stat .num.warn { color: var(--warn); }
+.stat .num.up { color: var(--safe); }
 .stat .delta { margin-top: 8px; font-size: 0.75rem; color: var(--text-mute); }
 .stat .delta.is-up { color: var(--safe); }
 .stat .delta.is-danger { color: var(--danger); }
@@ -872,6 +874,8 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 .score-big small { font-size: 0.9375rem; color: var(--text-mute); font-weight: 500; margin-left: 4px; }
 .score-meta { flex: 1; min-width: 240px; }
 .score-up { color: var(--safe); font-weight: 600; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+.score-up.is-down { color: var(--danger); }
+.score-up.is-flat { color: var(--text-mute); }
 .score-up span { color: var(--text-mute); font-weight: 400; margin-left: 4px; }
 .score-sub { color: var(--text-dim); font-size: 0.875rem; }
 .score-gauge { margin-top: 16px; max-width: 420px; }
@@ -963,6 +967,175 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
   transition: transform 0.2s var(--ease), color 0.2s var(--ease);
 }
 .action-card:hover .action-arrow { color: var(--accent); transform: translateX(3px); }
+
+/* 추천 액션 — 최약축 강조 + 기대 상승폭 배지 */
+.action-card.is-primary { border-color: rgba(var(--accent-rgb), 0.42); background: var(--accent-soft); }
+.action-card.is-primary:hover { border-color: rgba(var(--accent-rgb), 0.6); }
+.action-card .action-gain {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--safe);
+  font-variant-numeric: tabular-nums;
+}
+.action-card .action-flag {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+/* --- 4축 진단 카드 --- */
+.axis-card .axis-top { display: flex; align-items: baseline; justify-content: space-between; }
+.axis-card .axis-letter {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--text-mute);
+  letter-spacing: 0.04em;
+}
+.axis-card .num.unmeasured { color: var(--text-mute); font-size: 1.125rem; font-weight: 500; }
+.axis-card .bar { margin-top: 12px; }
+.axis-card .axis-find { margin-top: 10px; font-size: 0.75rem; color: var(--text-mute); line-height: 1.4; }
+
+/* --- 놓친 계정 찾기(발견 삼각형 딥링크) --- */
+.discovery-path { padding: 18px 0; border-top: 1px solid var(--border-faint); }
+.discovery-path:first-child { border-top: none; padding-top: 0; }
+.discovery-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.discovery-head h4 { font-size: 0.9375rem; font-weight: 600; }
+.discovery-head .discovery-tag { font-size: 0.75rem; color: var(--text-mute); }
+.discovery-guide { color: var(--text-dim); font-size: 0.875rem; line-height: 1.6; margin-bottom: 12px; max-width: 54em; }
+.discovery-links { display: flex; gap: 8px; flex-wrap: wrap; }
+.discovery-links .ext-arrow { margin-left: 6px; font-size: 0.8125rem; color: var(--text-mute); }
+.discovery-add { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+.discovery-add-note { color: var(--text-mute); font-size: 0.8125rem; margin-top: 6px; }
+
+/* cleanup 대표 딥링크(유출 점검) — 정리 목록 하단 단일 노출 */
+.cleanup-discovery {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-faint);
+  color: var(--text-dim);
+  font-size: 0.875rem;
+}
+
+/* 놓친 계정 찾기 상단 진입점(앵커 콜아웃) + 액션 설명 슬롯 */
+.discovery-anchor {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 0.875rem;
+  transition: border-color 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+.discovery-anchor:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.discovery-anchor strong { color: var(--accent); font-weight: 600; }
+.action-desc { color: var(--text-dim); font-size: 0.8125rem; line-height: 1.55; margin-bottom: 16px; }
+
+/* --- 자가신고·직접추가(T5.4) --- */
+.badge.self-input {
+  margin-left: 8px;
+  background: var(--surface-3);
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+.row-actions { display: inline-flex; gap: 6px; align-items: center; }
+.modal-note { color: var(--text-dim); font-size: 0.875rem; margin-bottom: 16px; }
+.report-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-faint);
+  font-size: 0.9375rem;
+}
+.report-row:first-of-type { border-top: none; }
+.report-row select,
+.text-input {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 0.9375rem;
+}
+.text-input { width: 100%; caret-color: var(--accent); }
+.text-input::placeholder { color: var(--text-mute); }
+.report-row select:focus-visible,
+.text-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  z-index: 200;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 12px 20px;
+  font-size: 0.875rem;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* --- 정리 결과 Before/After(T5.4b) --- */
+.result-hero { text-align: center; }
+.result-eyebrow { color: var(--safe); font-weight: 600; font-size: 0.875rem; margin-bottom: 12px; }
+.result-figure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.result-before { font-size: 2rem; font-weight: 600; color: var(--text-mute); font-variant-numeric: tabular-nums; }
+.result-arrow { font-size: 1.5rem; color: var(--text-mute); }
+.result-after {
+  font-size: 3.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--safe);
+  font-variant-numeric: tabular-nums;
+}
+.result-after small { font-size: 1rem; color: var(--text-mute); font-weight: 500; margin-left: 4px; }
+.result-lead { color: var(--text-dim); margin-top: 12px; }
+.result-goal { max-width: 420px; margin: 24px auto 0; text-align: left; }
+.result-goal-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.result-goal-val { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+
+.axis-delta-list { display: flex; flex-direction: column; gap: 20px; }
+.axis-delta-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.axis-delta-label { font-weight: 500; }
+.axis-delta-nums { color: var(--text-mute); font-variant-numeric: tabular-nums; font-size: 0.9375rem; }
+.axis-delta-nums strong { color: var(--text); }
+.axis-delta-gain { margin-left: 8px; color: var(--safe); font-weight: 600; }
+.axis-delta-unmeasured { color: var(--text-mute); font-size: 0.875rem; }
+.axis-delta-note { margin-top: 8px; font-size: 0.75rem; color: var(--text-mute); }
+
+.result-actions { display: flex; gap: 12px; justify-content: center; margin-top: 24px; }
+.result-disclaimer { text-align: center; color: var(--text-mute); font-size: 0.8125rem; margin-top: 16px; }
+.axis-card.is-weakest { border-color: rgba(var(--danger-rgb), 0.32); }
 
 /* --- 필터 칩 --- */
 .chip-row { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }

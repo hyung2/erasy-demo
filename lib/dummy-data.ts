@@ -229,8 +229,8 @@ export function deriveHeroAccounts(list: Account[] = accounts): Account[] {
 }
 export const heroAccounts = deriveHeroAccounts();
 
-// 안전도 카운터: 현재(산출값) → 정리 후 목표(시연 연출값)
-export const targetScore = 85;
+// 안전도 카운터: 정리 후 목표(시연 연출값). v2 다차원 전환 후 현재는 API 실값(위험대) → 정리 후 90.
+export const targetScore = 90;
 
 // 소셜 로그인 배지(원페이저 chip-soc 재현). email-password는 배지 없음
 export const socialBadge: Record<
