@@ -24,7 +24,8 @@ export default function CleanupResultPage() {
   const proj = useMemo(() => projectRecovery(), []);
   const before = proj.beforeComposite ?? 0;
   const after = proj.afterComposite ?? before;
-  const reached = after >= targetScore;
+  const goalLabel =
+    after > targetScore ? '목표 초과 달성' : after === targetScore ? '목표 달성' : '다음 목표';
 
   return (
     <>
@@ -53,7 +54,7 @@ export default function CleanupResultPage() {
         {/* 다음 목표 게이지 */}
         <div className="result-goal">
           <div className="result-goal-head">
-            <span>{reached ? '목표 달성' : '다음 목표'}</span>
+            <span>{goalLabel}</span>
             <span className="result-goal-val">{targetScore}점</span>
           </div>
           <div className={`bar ${band(after)}`} role="img" aria-label={`현재 ${after}점, 목표 ${targetScore}점`}>

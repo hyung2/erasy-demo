@@ -854,6 +854,7 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 .stat .num { font-size: 1.75rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .stat .num.danger { color: var(--danger); }
 .stat .num.warn { color: var(--warn); }
+.stat .num.up { color: var(--safe); }
 .stat .delta { margin-top: 8px; font-size: 0.75rem; color: var(--text-mute); }
 .stat .delta.is-up { color: var(--safe); }
 .stat .delta.is-danger { color: var(--danger); }

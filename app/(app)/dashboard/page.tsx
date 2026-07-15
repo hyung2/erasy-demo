@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useDemo } from '@/components/DemoStateClient';
@@ -9,6 +9,7 @@ import { ScoreBenchmarkChart } from '@/components/ScoreBenchmarkChart';
 import { demo } from '@/content/copy';
 import type { ScoreDTO } from '@/lib/api-types';
 import type { AxisKey, ActionType } from '@/lib/score-v2';
+import { projectRecovery } from '@/lib/score-projection';
 import {
   accounts,
   deriveGrade,
@@ -97,10 +98,12 @@ export default function DashboardPage() {
   const apiScore = dto?.score ?? null;
   const apiGrade = dto?.grade ?? null;
 
-  // 정리 완료(데모) 시 목표 점수로 연출, 아니면 API 종합 점수. 등급·델타·게이지 색도 함께.
-  const score = cleaned ? targetScore : (apiScore ?? 0);
+  // 정리 완료(데모) 시 회복 투영 도달점(계단 최종 93 — slide·result와 3곳 통일), 아니면 API 종합.
+  //   93은 하드코딩 아닌 엔진 회복 궤적(projectRecovery)에서 파생. 목표선 90은 별도(초과 달성).
+  const recoveredScore = useMemo(() => projectRecovery().afterComposite ?? targetScore, []);
+  const score = cleaned ? recoveredScore : (apiScore ?? 0);
   const grade = cleaned ? deriveGrade(score) : (apiGrade ?? '위험');
-  const delta = cleaned ? targetScore - (apiScore ?? 0) : (dto?.delta ?? 0);
+  const delta = cleaned ? recoveredScore - (apiScore ?? 0) : (dto?.delta ?? 0);
 
   const scoreClass = grade === '위험' ? ' is-danger' : grade === '주의' ? ' is-warn' : '';
   const gaugeClass = grade === '양호' ? ' is-safe' : grade === '주의' ? ' is-warn' : ' is-danger';
@@ -125,6 +128,15 @@ export default function DashboardPage() {
   const posLabel =
     score < peerLast - 2 ? demo.benchmark.below : score > peerLast + 2 ? demo.benchmark.above : demo.benchmark.about;
   const posBadge = score > peerLast + 2 ? 'badge live' : score < peerLast - 2 ? 'badge warn-badge' : 'badge';
+
+  // ── GUARD "지속 관리" 카드 — 정리 후에도 지켜본다 서사(웨이브3). ──
+  // 이번 주 변화: 스냅샷 이력 2건+ 있을 때만 delta, 1건이면 "관리 시작"(방어).
+  const hasTrend = (dto?.trend?.length ?? 0) >= 2;
+  const weekChange = hasTrend ? (delta >= 0 ? `+${delta}` : `${delta}`) : '관리 시작';
+  const weekChangeCls = !hasTrend ? '' : delta > 0 ? ' up' : delta < 0 ? ' danger' : '';
+  // 또래 대비 상위 백분위(데모 기준 근사 — 분포 상수 spread로 z→percentile). 평균 아래면 미표기.
+  const aboveePeer = score >= peerLast;
+  const topPct = Math.min(99, Math.max(1, Math.round(50 - ((score - peerLast) / 22) * 34)));
 
   const bars = [
     { key: '소셜 로그인', dot: 'is-accent', cls: '', count: socialCount },
@@ -406,6 +418,34 @@ export default function DashboardPage() {
           meLabel={demo.benchmark.me}
           peerLabel={demo.benchmark.peer}
         />
+      </section>
+
+      {/* 지속 관리(GUARD) — 정리 후에도 지켜본다 */}
+      <section className="panel" aria-label="지속 관리">
+        <div className="panel-head">
+          <div>
+            <h3>지속 관리</h3>
+            <p className="panel-note">정리 후에도 이레이지가 유출·이상 접속을 계속 지켜봅니다.</p>
+          </div>
+          <span className="badge">{demo.benchmark.badge}</span>
+        </div>
+        <div className="stat-grid cols3">
+          <div className="stat">
+            <div className="lbl">이번 주 점수 변화</div>
+            <div className={`num${weekChangeCls}`}>{weekChange}</div>
+            <div className="delta">{hasTrend ? '직전 스냅샷 대비' : '스냅샷이 쌓이면 추이를 보여드려요'}</div>
+          </div>
+          <div className="stat">
+            <div className="lbl">또래 대비</div>
+            <div className="num">{aboveePeer ? `상위 ${topPct}%` : '평균 아래'}</div>
+            <div className="delta">30대 또래 · 데모 기준</div>
+          </div>
+          <div className="stat">
+            <div className="lbl">다음 점검</div>
+            <div className="num">7일 후</div>
+            <div className="delta is-up">유출 DB·이상 접속 자동 점검</div>
+          </div>
+        </div>
       </section>
 
       {/* 점수 올리는 법 모달 */}

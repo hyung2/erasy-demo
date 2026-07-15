@@ -85,7 +85,7 @@ export async function PATCH(
     data.discovered = body.discovered;
   }
   if (body.lastUsedBucket !== undefined) {
-    if (!(body.lastUsedBucket in BUCKET_DAYS)) {
+    if (!Object.prototype.hasOwnProperty.call(BUCKET_DAYS, body.lastUsedBucket)) {
       return Response.json({ error: 'invalid lastUsedBucket' }, { status: 400 });
     }
     data.lastUsedAt = bucketToDate(body.lastUsedBucket);

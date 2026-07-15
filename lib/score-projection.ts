@@ -18,7 +18,11 @@ import {
 
 const AXIS_KEYS: AxisKey[] = ['exposure', 'surface', 'hygiene', 'threat'];
 
-// 시드 신호 → 엔진 입력 행(score-service memoryRowsV2와 동일 매핑. AccessLog 없음 → T 미측정).
+// 시드 → 엔진 입력 행. fixture(score-v2-fixture.test.ts)·DB 경로와 동일하게 T축 관측 세팅.
+//   앵커 24 정합의 핵심: 접속기록 관측 5/24 + 이상접속 뽐뿌(a17). 이걸 빼면 T 미측정 → before=22로 어긋남.
+const SUSPICIOUS = new Set(['a17']);
+const ACCESS_OBSERVED = new Set(['a17', 'a01', 'a05', 'a08', 'a19']); // 5/24
+
 function baseRows(): ScoreRowV2[] {
   return dummyAccounts.map((a) => {
     const b =
@@ -38,8 +42,8 @@ function baseRows(): ScoreRowV2[] {
       discovered: a.discovered ?? false,
       breachedUnresolved: b !== null,
       breachedPasswordExposed: b?.exposedFields.includes('비밀번호') ?? false,
-      suspiciousRecent: false,
-      accessLogObserved: false,
+      suspiciousRecent: SUSPICIOUS.has(a.id),
+      accessLogObserved: ACCESS_OBSERVED.has(a.id),
       removed,
       passwordChanged: false,
       sessionsCleared: false,
@@ -51,6 +55,8 @@ function composite(axes: Record<AxisKey, AxisScore>): number | null {
   return blend([axes.exposure, axes.surface, axes.hygiene, axes.threat]).composite;
 }
 
+const idxOf = (id: string) => dummyAccounts.findIndex((a) => a.id === id);
+
 export type RecoveryProjection = {
   beforeComposite: number | null;
   afterComposite: number | null;
@@ -59,20 +65,22 @@ export type RecoveryProjection = {
   axisKeys: AxisKey[];
 };
 
-// 회복 레버 전부 적용(유출 조치·비번 교체·2FA·세션 정리·방치 계정 제거) → 예상 도달 상태.
+// 회복 투영 = fixture 회복 계단(워크스루 12.5)과 동일 순서·타깃 → before 24, after 93(계단 최종).
+//   delete는 전삭제가 아니라 방치·미인지 대상만(Quora·뽐뿌·Medium·카카오스토리), 2FA는 Amazon·인터파크.
+//   앵커·계단이 fixture로 검증된 값이라, 투영은 그 궤적을 그대로 재현(하드코딩 아닌 SSOT 궤적 승계).
 export function projectRecovery(): RecoveryProjection {
   const before = baseRows();
-  let after = before;
-  const levers = [
-    'resolve_breach',
-    'password_change',
-    'enable_2fa',
-    'logout_sessions',
-    'delete',
-  ] as const;
-  for (const lever of levers) {
-    after = applyAction(after, lever);
-  }
+  const s1 = applyAction(before, 'password_change'); // 재사용 6계정 교체
+  const s2 = applyAction(s1, 'resolve_breach'); // 유출 3건 해결
+  const s3 = applyAction(s2, 'logout_sessions'); // 이상 세션 정리
+  const s4 = applyAction(s3, 'delete', [
+    idxOf('a15'),
+    idxOf('a17'),
+    idxOf('a14'),
+    idxOf('a07'),
+  ]); // 방치·미인지 제거
+  const after = applyAction(s4, 'enable_2fa', [idxOf('a12'), idxOf('a16')]); // 2FA 설정
+
   const beforeAxes = computeAxes(before);
   const afterAxes = computeAxes(after);
   return {
