@@ -117,7 +117,7 @@ export const demo = {
     riseLabel: '정리 완료 · 안전도 상승',
     celebrate: '안전도가 크게 올랐어요',
     riseNote: '예시 데이터',
-    afterCta: { label: '침해 알림 확인하기', href: '/breach' } as CtaLink,
+    afterCta: { label: '유출 확인하기', href: '/breach' } as CtaLink,
     googleManage: {
       label: '구글 보안 설정에서 직접 관리',
       href: 'https://myaccount.google.com/permissions',

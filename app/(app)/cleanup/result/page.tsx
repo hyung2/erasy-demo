@@ -10,12 +10,12 @@ import { targetScore } from '@/lib/dummy-data';
 import { demo } from '@/content/copy';
 import type { AxisKey } from '@/lib/score-v2';
 
-// 축 표시 메타 + 회복 라벨(과장 금지 — surface만 "표면 제거").
+// 축 표시 메타 + 회복 라벨(과장 금지 — 무효화 표현 없음). 라벨은 dashboard 4축과 동일.
 const AXIS_META: Record<AxisKey, { label: string; recover: string }> = {
-  exposure: { label: '유출 노출', recover: '유출 항목 조치' },
-  surface: { label: '방치 표면', recover: '방치 표면 제거' },
-  hygiene: { label: '계정 위생', recover: '비밀번호 위생 개선' },
-  threat: { label: '진행형 위협', recover: '이상 세션 정리' },
+  exposure: { label: '유출 위험 — 내 정보가 이미 새어나갔는지', recover: '유출 항목 조치' },
+  surface: { label: '방치된 계정 — 안 쓰고 오래 둔 계정', recover: '방치 계정 정리' },
+  hygiene: { label: '비밀번호 습관 — 재사용·2단계 인증 상태', recover: '비밀번호 습관 개선' },
+  threat: { label: '이상 접속 — 지금 수상한 로그인이 있는지', recover: '이상 세션 정리' },
 };
 
 const band = (s: number) => (s >= 80 ? 'is-safe' : s >= 50 ? 'is-warn' : 'is-danger');
@@ -75,7 +75,7 @@ export default function CleanupResultPage() {
             return (
               <div className="axis-delta" key={key}>
                 <div className="axis-delta-top">
-                  <span className="axis-delta-label">{meta.label}</span>
+                  <span className="axis-delta-label">{meta.label.split(' — ')[0]}</span>
                   <span className="axis-delta-unmeasured">확인 불가</span>
                 </div>
                 <div className="bar">

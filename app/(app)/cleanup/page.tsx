@@ -50,18 +50,19 @@ export default function CleanupPage() {
     <>
       <div className="page-head">
         <div className="head-left">
-          <h1>정리하기</h1>
+          <h1>계정 정리</h1>
           <span className="badge warn-badge">{candidates.length}건 대기</span>
         </div>
       </div>
+      <p className="page-sub">안 쓰는 소셜 연결을 끊고, 삭제가 필요한 계정은 요청하세요.</p>
 
       {/* 탭 */}
       <div className="chip-row" role="group" aria-label="정리 방식">
         <button type="button" className={`chip${tab === 'unlink' ? ' active' : ''}`} onClick={() => setTab('unlink')}>
-          연결앱 정리
+          소셜 연결 끊기
         </button>
         <button type="button" className={`chip${tab === 'delete' ? ' active' : ''}`} onClick={() => setTab('delete')}>
-          삭제 요청
+          계정 삭제 요청
         </button>
       </div>
 
@@ -77,6 +78,11 @@ export default function CleanupPage() {
                 {candidates.length}개 일괄 선택
               </button>
             </div>
+
+            {/* 액션 설명 슬롯(임시 카피 — Joy 맵 확정 후 교체) */}
+            <p className="action-desc">
+              선택한 연결을 OAuth 표준 방식으로 해제 요청합니다. 지금은 요청만 접수되고, 실제 해제는 로드맵 단계입니다.
+            </p>
 
             <p className="list-label">연결 해제 대상</p>
 

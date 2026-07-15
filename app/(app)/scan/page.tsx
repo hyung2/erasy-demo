@@ -206,7 +206,7 @@ export default function ScanPage() {
         setForm(null);
         await loadAccounts();
         const next = await refreshScore();
-        setToast(next !== null ? `자가신고 반영 · 안전도 재계산 ${next}점` : '자가신고 반영됨');
+        setToast(next !== null ? `입력 반영 · 안전도 재계산 ${next}점` : '입력 반영됨');
       } else if (r.status === 404) {
         setToast('데모 시드 계정은 편집할 수 없어요(읽기 전용).');
       } else {
@@ -299,6 +299,12 @@ export default function ScanPage() {
         </div>
       </div>
 
+      {/* 놓친 계정 찾기 진입점(상단 노출 — CEO QA: 하단이라 못 찾음) */}
+      <a href="#discovery" className="discovery-anchor">
+        <span>스캔에 안 잡힌 계정이 있나요?</span>
+        <strong>빠진 계정 직접 찾기 →</strong>
+      </a>
+
       {/* 필터 */}
       <div className="chip-row" role="group" aria-label="계정 필터">
         {FILTERS.map((f) => (
@@ -387,8 +393,14 @@ export default function ScanPage() {
                       </td>
                       <td>
                         <span className="row-actions">
-                          <button type="button" className="btn-sm" onClick={() => openReport(a)}>
-                            자가신고
+                          <button
+                            type="button"
+                            className="btn-sm"
+                            onClick={() => openReport(a)}
+                            title="비밀번호 재사용·2단계 인증·마지막 사용 여부를 직접 입력해 안전도에 반영합니다"
+                            aria-label={`${a.name} 자가신고 — 계정 정보 직접 입력`}
+                          >
+                            정보 입력
                           </button>
                           {isReq ? (
                             <span className="req-tag">요청됨</span>
@@ -409,10 +421,10 @@ export default function ScanPage() {
       </section>
 
       {/* 놓친 계정 찾기 — 발견 삼각형 3경로(외부 관리 페이지 안내). 자동 조회 아님·본인 확인. */}
-      <section className="panel" aria-label="놓친 계정 찾기">
+      <section className="panel" id="discovery" aria-label="놓친 계정 찾기">
         <div className="panel-head">
           <div>
-            <h3>놓친 계정 찾기</h3>
+            <h3>빠진 계정 직접 찾기</h3>
             <p className="panel-note">
               스캔에 안 잡힌 계정은 아래에서 직접 확인해 보세요. 우리가 대신 조회하지 않습니다.
             </p>
@@ -476,7 +488,7 @@ export default function ScanPage() {
       {reportAccount && form && (
         <div className="modal" onClick={(e) => e.target === e.currentTarget && setReportId(null)}>
           <div className="modal-box" role="dialog" aria-modal="true" aria-labelledby="report-title">
-            <h3 id="report-title">{reportAccount.name} 자가신고</h3>
+            <h3 id="report-title">{reportAccount.name} · 아는 정보 입력</h3>
             <p className="modal-note">직접 아는 정보를 입력하면 안전도에 바로 반영돼요.</p>
 
             <label className="report-row">

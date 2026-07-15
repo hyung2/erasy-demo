@@ -6,16 +6,9 @@
 import { useState } from 'react';
 import { checkPasswordPwned, type PwnedResult } from '@/lib/hibp';
 
-// 결과 표시는 CSS 변수(--danger/--safe)로 테마 정합. input은 앱에 기존 텍스트필드 클래스가 없어 최소 인라인.
-const inputStyle: React.CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  padding: '10px 12px',
-  borderRadius: 8,
-  border: '1px solid rgba(0, 0, 0, 0.16)',
-  font: 'inherit',
-  background: '#fff',
-};
+// 입력은 테마 .text-input 클래스 재사용(다크 배경 위 가독·placeholder·caret 정합).
+//   기존 흰 배경 + 상속 흰 글씨로 타이핑이 안 보이던 버그 수정. flex 레이아웃만 인라인 보강.
+const inputStyle: React.CSSProperties = { flex: 1, minWidth: 0 };
 
 type State =
   | { kind: 'idle' }
@@ -54,12 +47,13 @@ export function BreachPasswordCheck() {
         <form onSubmit={onSubmit} style={{ display: 'flex', gap: 10, margin: '14px 0 4px' }}>
           <input
             type="password"
+            className="text-input"
             value={value}
             onChange={(e) => {
               setValue(e.target.value);
               if (state.kind !== 'idle') setState({ kind: 'idle' });
             }}
-            placeholder="검사할 비밀번호 입력"
+            placeholder="검사할 비밀번호를 입력하세요"
             aria-label="검사할 비밀번호"
             autoComplete="off"
             spellCheck={false}

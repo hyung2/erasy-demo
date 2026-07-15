@@ -759,6 +759,7 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 .page-head .head-left { display: flex; align-items: center; gap: 12px; }
 .page-head .head-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .head-meta { color: var(--text-mute); font-size: 0.8125rem; }
+.page-sub { color: var(--text-dim); font-size: 0.9375rem; margin: -16px 0 24px; }
 .head-meta time { color: var(--text-dim); font-weight: 500; }
 
 .badge {
@@ -1023,6 +1024,26 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
   font-size: 0.875rem;
 }
 
+/* 놓친 계정 찾기 상단 진입점(앵커 콜아웃) + 액션 설명 슬롯 */
+.discovery-anchor {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 0.875rem;
+  transition: border-color 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+.discovery-anchor:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.discovery-anchor strong { color: var(--accent); font-weight: 600; }
+.action-desc { color: var(--text-dim); font-size: 0.8125rem; line-height: 1.55; margin-bottom: 16px; }
+
 /* --- 자가신고·직접추가(T5.4) --- */
 .badge.self-input {
   margin-left: 8px;
@@ -1053,7 +1074,8 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
   font-family: inherit;
   font-size: 0.9375rem;
 }
-.text-input { width: 100%; }
+.text-input { width: 100%; caret-color: var(--accent); }
+.text-input::placeholder { color: var(--text-mute); }
 .report-row select:focus-visible,
 .text-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .toast {

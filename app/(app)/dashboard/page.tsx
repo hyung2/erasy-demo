@@ -38,23 +38,23 @@ const dotClass: Record<FeedItem['tone'], string> = {
 
 const RISK_ALERT_KEY = 'erasy-risk-alerted';
 
-// 4축 표시 메타(한국어 축명 + 축 문자). 점수 엔진 v2 AxisKey와 1:1.
-const AXIS_META: Record<AxisKey, { label: string; letter: string }> = {
-  exposure: { label: '유출 노출', letter: 'E' },
-  surface: { label: '방치 표면', letter: 'S' },
-  hygiene: { label: '계정 위생', letter: 'H' },
-  threat: { label: '진행형 위협', letter: 'T' },
+// 4축 표시 메타(한국어 축명). 점수 엔진 v2 AxisKey와 1:1. (E/S/H/T 배지는 라벨과 불일치·장식이라 제거)
+const AXIS_META: Record<AxisKey, { label: string }> = {
+  exposure: { label: '유출 위험 — 내 정보가 이미 새어나갔는지' },
+  surface: { label: '방치된 계정 — 안 쓰고 오래 둔 계정' },
+  hygiene: { label: '비밀번호 습관 — 재사용·2단계 인증 상태' },
+  threat: { label: '이상 접속 — 지금 수상한 로그인이 있는지' },
 };
 const AXIS_ORDER: AxisKey[] = ['exposure', 'surface', 'hygiene', 'threat'];
 
-// 회복 액션 표시 라벨 + 이동 경로(과장 금지 문구 — "표면 제거"는 무효화 아님).
+// 회복 액션 표시 라벨 + 이동 경로(과장 금지 문구 — 무효화 표현 없음). href는 내부 경로(불변).
 const ACTION_META: Record<ActionType, { label: string; href: string }> = {
-  password_change: { label: '유출 비밀번호 교체', href: '/breach' },
-  resolve_breach: { label: '유출 항목 조치', href: '/breach' },
+  password_change: { label: '유출된 비밀번호 바꾸기', href: '/breach' },
+  resolve_breach: { label: '유출 계정 처리하기', href: '/breach' },
   enable_2fa: { label: '2단계 인증 켜기', href: '/breach' },
-  delete: { label: '방치 계정 정리', href: '/cleanup' },
-  revoke: { label: '연결 해제', href: '/cleanup' },
-  logout_sessions: { label: '이상 세션 로그아웃', href: '/cleanup' },
+  delete: { label: '방치 계정 정리하기', href: '/cleanup' },
+  revoke: { label: '소셜 연결 끊기', href: '/cleanup' },
+  logout_sessions: { label: '이상 접속 끊기', href: '/cleanup' },
 };
 
 // 점수대 → 게이지 색 밴드(80+ 안전 / 50+ 주의 / 그 외 위험). deriveGrade 임계와 정합.
@@ -63,8 +63,8 @@ const band = (s: number) => (s >= 80 ? 'is-safe' : s >= 50 ? 'is-warn' : 'is-dan
 // 정적 폴백 네비(API 미준비·정리 완료 상태에서 노출).
 const NEXT_ACTIONS = [
   { label: '계정 스캔하기', href: '/scan', desc: '흩어진 계정을 다시 훑어봅니다.' },
-  { label: '침해 알림 확인', href: '/breach', desc: '유출된 계정을 점검합니다.' },
-  { label: '연결앱 정리', href: '/cleanup', desc: '안 쓰는 연결을 끊습니다.' },
+  { label: '유출 확인', href: '/breach', desc: '유출된 계정을 점검합니다.' },
+  { label: '소셜 연결 정리', href: '/cleanup', desc: '안 쓰는 연결을 끊습니다.' },
 ];
 
 export default function DashboardPage() {
@@ -247,7 +247,6 @@ export default function DashboardPage() {
                 <div className={cardCls} key={key}>
                   <div className="axis-top">
                     <span className="lbl">{meta.label}</span>
-                    <span className="axis-letter">{meta.letter}</span>
                   </div>
                   {measured ? (
                     <div className={`num ${band(rounded as number) === 'is-danger' ? 'danger' : band(rounded as number) === 'is-warn' ? 'warn' : ''}`}>
@@ -300,7 +299,7 @@ export default function DashboardPage() {
                     {gain > 0 && <span className="action-gain">+{gain}점</span>}
                   </h4>
                   <p>
-                    대상 계정 {count}개 · {AXIS_META[rec.axis].label} 축이 회복됩니다.
+                    {count}개 계정에 적용돼요 · {AXIS_META[rec.axis].label.split(' — ')[0]} 점수가 오릅니다
                   </p>
                   <span className="action-arrow" aria-hidden="true">
                     →
