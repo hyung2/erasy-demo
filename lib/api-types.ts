@@ -18,6 +18,26 @@ export type AccountDTO = {
   lastUsedDays: number; // lastUsedAt에서 파생(런타임)
   breached: boolean;
   risk: 'low' | 'medium' | 'high'; // deriveRisk 파생
+  // 자가신고 신호(T5.4) — 카드에 "직접 입력" 라벨 표시 근거. seed 폴백은 undefined.
+  twoFactorEnabled?: boolean;
+  passwordReused?: boolean;
+  discovered?: boolean;
+};
+
+// 마지막 사용 시기 자가신고 버킷 → lastUsedAt 파생(정밀 일자 대신 구간 입력).
+export type LastUsedBucket = 'within1y' | '1to2y' | 'over2y' | 'unknown';
+
+// PATCH /api/accounts/[id] — 자가신고 신호 갱신(전 필드 선택 — 부분 갱신).
+export type AccountUpdateRequest = {
+  passwordReused?: boolean;
+  twoFactorEnabled?: boolean;
+  lastUsedBucket?: LastUsedBucket;
+  discovered?: boolean;
+};
+
+// POST /api/accounts — 몰랐던 계정 직접 추가(F2). 서비스명만 입력 → 나머지 파생.
+export type AccountCreateRequest = {
+  name: string;
 };
 
 // GET /api/score — 점수/등급/추이

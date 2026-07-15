@@ -39,11 +39,11 @@ export default function CleanupPage() {
     candidates.forEach((c) => (next[c.id] = !allSelected));
     setChecked(next);
   }
-  // 요청 접수(연출) — 실제 revoke 없음. 데모 흐름상 안전도 24→90 전환 후 대시보드로.
+  // 요청 접수(연출) — 실제 revoke 없음. 데모 흐름상 안전도 24→90 전환 → 결과 화면(Before/After).
   function submitRequest() {
     setConfirmOpen(false);
     markCleaned();
-    router.push('/dashboard');
+    router.push('/cleanup/result');
   }
 
   return (

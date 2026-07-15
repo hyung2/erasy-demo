@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-import type { ApiEnvelope, AccountDTO } from '@/lib/api-types';
+import type { ApiEnvelope, AccountDTO, AccountCreateRequest } from '@/lib/api-types';
 import { accounts as seed, deriveRisk, type LinkMethod } from '@/lib/dummy-data';
 
 // dummy linkMethod → DB provider enum 매핑(스키마 정본)
@@ -42,6 +42,9 @@ function seedDTO(): AccountDTO[] {
     lastUsedDays: a.lastUsedDays,
     breached: a.breached,
     risk: deriveRisk(a),
+    twoFactorEnabled: a.twoFactorEnabled ?? false,
+    passwordReused: a.passwordReused ?? false,
+    discovered: a.discovered ?? false,
   }));
 }
 
@@ -76,6 +79,9 @@ export async function GET() {
         lastUsedDays,
         breached: r.breached,
         risk: riskOf(r.breached, Math.floor(lastUsedDays / 30), r.category),
+        twoFactorEnabled: r.twoFactorEnabled,
+        passwordReused: r.passwordReused,
+        discovered: r.discovered,
       };
     });
     const body: ApiEnvelope<AccountDTO[]> = { data };
@@ -85,5 +91,59 @@ export async function GET() {
     console.warn('[api/accounts] DB unavailable, seed fallback:', (e as Error).message);
     const body: ApiEnvelope<AccountDTO[]> = { data: seedDTO() };
     return Response.json(body);
+  }
+}
+
+// POST /api/accounts — 몰랐던 계정 직접 추가(T5.4 F2). 서비스명만 입력, 나머지 파생.
+//  source=user_input·discovered=true·provider=manual·lastUsedAt=null(미상). 점수 재계산은 GET /api/score.
+export async function POST(request: Request) {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+
+  let body: AccountCreateRequest;
+  try {
+    body = (await request.json()) as AccountCreateRequest;
+  } catch {
+    return Response.json({ error: 'invalid json' }, { status: 400 });
+  }
+
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  if (name.length === 0 || name.length > 60) {
+    return Response.json({ error: 'name required (1~60 chars)' }, { status: 400 });
+  }
+
+  try {
+    const r = await prisma.account.create({
+      data: {
+        userId,
+        name,
+        provider: 'manual',
+        category: 'domestic',
+        source: 'user_input',
+        discovered: true, // 몰랐던 계정 = 자가발견
+        lastUsedAt: null, // 미상(coverage 하락, 무감점)
+      },
+    });
+    const dto: AccountDTO = {
+      id: r.id,
+      name: r.name,
+      category: r.category,
+      provider: r.provider,
+      source: r.source,
+      lastUsedDays: daysSince(r.lastUsedAt),
+      breached: r.breached,
+      risk: riskOf(r.breached, 120, r.category), // lastUsedAt null → 장기 미사용 취급(daysSince 3650)
+      twoFactorEnabled: r.twoFactorEnabled,
+      passwordReused: r.passwordReused,
+      discovered: r.discovered,
+    };
+    const envelope: ApiEnvelope<AccountDTO> = { data: dto };
+    return Response.json(envelope, { status: 201 });
+  } catch (e) {
+    console.warn('[api/accounts POST] create failed:', (e as Error).message);
+    return Response.json({ error: 'create unavailable' }, { status: 503 });
   }
 }
