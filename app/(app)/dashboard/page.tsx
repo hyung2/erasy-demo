@@ -20,8 +20,6 @@ import {
   socialCount,
   unusedCount,
   activityFeed,
-  monthlyLabels,
-  myMonthlyTrend,
   peerMonthlyAvg,
   highRiskCount,
   type FeedItem,
@@ -122,9 +120,19 @@ export default function DashboardPage() {
         ? '위험이 남아 있어요. 아래 진단에서 취약한 축부터 정리해 보세요.'
         : '지금 위험 신호가 있어요. 가장 취약한 축부터 조치하면 점수가 오릅니다.';
 
-  // 월별 벤치마크: 내 라인 마지막 = 현재 점수. 또래 평균과 위치 비교.
-  const myLine = [...myMonthlyTrend.slice(0, -1), score];
+  // 추이 차트: 실제 측정 이력(ScoreSnapshot)만 그린다. 월별 더미 상수는 폐기 —
+  //   앞 구간이 근거 없는 값이면 점수를 라벨로 찍는 순간 그대로 노출된다.
+  //   2점 미만이면 선을 그리지 않고 안내 문구로 대체(가짜 추이 금지).
+  const trendPoints = dto?.trendPoints ?? [];
+  const hasTrendChart = trendPoints.length >= 2;
+  const chartLabels = trendPoints.map((p) => {
+    const d = new Date(p.at);
+    return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const chartMine = trendPoints.map((p) => p.score);
+  // 또래 평균은 관측 데이터가 아니라 예시 기준선 — 점별 변동 없이 평평하게(배지 "예시" 유지).
   const peerLast = peerMonthlyAvg[peerMonthlyAvg.length - 1];
+  const chartPeer = trendPoints.map(() => peerLast);
   const posLabel =
     score < peerLast - 2 ? demo.benchmark.below : score > peerLast + 2 ? demo.benchmark.above : demo.benchmark.about;
   const posBadge = score > peerLast + 2 ? 'badge live' : score < peerLast - 2 ? 'badge warn-badge' : 'badge';
@@ -410,13 +418,17 @@ export default function DashboardPage() {
             <span className="badge">{demo.benchmark.badge}</span>
           </div>
         </div>
-        <ScoreBenchmarkChart
-          labels={monthlyLabels}
-          mine={myLine}
-          peer={peerMonthlyAvg}
-          meLabel={demo.benchmark.me}
-          peerLabel={demo.benchmark.peer}
-        />
+        {hasTrendChart ? (
+          <ScoreBenchmarkChart
+            labels={chartLabels}
+            mine={chartMine}
+            peer={chartPeer}
+            meLabel={demo.benchmark.me}
+            peerLabel={demo.benchmark.peer}
+          />
+        ) : (
+          <p className="panel-note">{demo.benchmark.empty}</p>
+        )}
       </section>
 
       {/* 지속 관리(GUARD) — 정리 후에도 지켜본다 */}

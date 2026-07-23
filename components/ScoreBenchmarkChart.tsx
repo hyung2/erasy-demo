@@ -130,6 +130,24 @@ export function ScoreBenchmarkChart({
           return <circle key={`p${i}`} cx={x} cy={y} r={2.5} fill={peerColor} />;
         })}
 
+        {/* 또래 값 라벨 — 마지막 점 1곳만(선이 평평해 중복 표기 불필요) */}
+        {peer.length > 0 &&
+          (() => {
+            const i = peer.length - 1;
+            const [x, y] = toXY(peer[i], i);
+            return (
+              <text
+                x={x - 8}
+                y={y - 8}
+                textAnchor="end"
+                style={{ fontSize: '11px', fontWeight: 600 }}
+                fill="var(--text-mute)"
+              >
+                {Math.round(peer[i])}
+              </text>
+            );
+          })()}
+
         {/* 나 (accent 실선) */}
         <polyline
           points={poly(mine)}
@@ -144,17 +162,40 @@ export function ScoreBenchmarkChart({
           const last = i === mine.length - 1;
           return <circle key={`m${i}`} cx={x} cy={y} r={last ? 4.5 : 3} fill={meColor} />;
         })}
+
+        {/* 내 값 라벨 — 점마다 점수 표기(선만 보고는 몇 점인지 알 수 없음).
+            점이 위쪽에 붙으면 라벨을 아래로 내려 잘림 방지. 양 끝은 안쪽 정렬. */}
+        {mine.map((v, i) => {
+          const [x, y] = toXY(v, i);
+          const above = y - padTop > 16;
+          const anchor = i === 0 ? 'start' : i === mine.length - 1 ? 'end' : 'middle';
+          const dx = i === 0 ? -2 : i === mine.length - 1 ? 2 : 0;
+          return (
+            <text
+              key={`mv${i}`}
+              x={x + dx}
+              y={above ? y - 9 : y + 17}
+              textAnchor={anchor}
+              style={{ fontSize: '12px', fontWeight: 700 }}
+              fill={meColor}
+            >
+              {Math.round(v)}
+            </text>
+          );
+        })}
       </g>
 
-      {/* 월 라벨 */}
+      {/* x축 라벨(측정 시점) — 양 끝은 안쪽 정렬. 가운데 정렬만 쓰면 날짜처럼 긴 라벨이 잘린다. */}
       {labels.map((lb, i) => {
         const x = padX + i * stepX;
+        const anchor = i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle';
+        const dx = i === 0 ? -2 : i === labels.length - 1 ? 2 : 0;
         return (
           <text
             key={`l${i}`}
-            x={x}
+            x={x + dx}
             y={height - 8}
-            textAnchor="middle"
+            textAnchor={anchor}
             style={{ fontSize: '11px', fontWeight: 500 }}
             fill="var(--text-mute)"
           >

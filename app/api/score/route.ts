@@ -23,6 +23,7 @@ export async function GET() {
     grade: result.grade,
     delta: result.delta,
     trend: result.trend,
+    trendPoints: result.trendPoints,
     coverage: result.coverage,
     coveredCount: result.coveredCount,
     // v2 additive — 기존 필드 shape 불변, 신규 4축·최약축·기대상승만 추가

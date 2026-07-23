@@ -41,6 +41,13 @@ async function main() {
       `${verdict ? 'PASS' : 'CHECK'}  user=${mask(u.id)} · 계정 ${accounts}(본인접두 ${ownPrefix}) · ` +
         `스냅샷 ${snapshots} · 종합 ${score.score}(${score.grade}) · ${axesStr} · fallback=${score.fallback}`,
     );
+    // 추이 차트 입력(실 스냅샷) — 2점 이상이어야 대시보드가 선을 그린다.
+    const pts = score.trendPoints
+      .map((p) => `${p.at.slice(5, 10)}:${p.score}`)
+      .join(' → ');
+    console.log(
+      `        추이 ${score.trendPoints.length}점 [${pts}] · 차트 렌더=${score.trendPoints.length >= 2 ? 'YES' : 'NO(안내문구)'}`,
+    );
   }
 }
 

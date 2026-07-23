@@ -48,6 +48,9 @@ export type ScoreDTO = {
   grade: '양호' | '주의' | '위험';
   delta: number; // 직전 스냅샷 대비
   trend: number[]; // 추이(스냅샷 시계열)
+  // 추이 점별 기록 시각(ISO). trend와 인덱스 1:1. 차트 x축 라벨 근거 — 월별 더미 상수 대체.
+  //   이력이 없으면 빈 배열 → 화면은 가짜 선 대신 "쌓이면 보여드려요"로 방어.
+  trendPoints: { score: number; at: string }[];
   coverage: number; // 확인 커버리지(0~1) = surface 축(헤드라인)
   coveredCount: number;
   // ── v2 additive ──
