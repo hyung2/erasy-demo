@@ -150,49 +150,31 @@ export type ProvisionOptions = {
   force?: boolean;
 };
 
-// 한 사용자에게 데모 인벤토리 일습을 적재한다. User 레코드는 호출자가 먼저 보장해야 한다.
-export async function provisionDemoData(
-  db: PrismaClient,
-  userId: string,
-  opts: ProvisionOptions,
-): Promise<ProvisionResult> {
-  const { idPrefix, force = false } = opts;
-
-  if (!force) {
-    const existing = await db.account.count({ where: { userId } });
-    if (existing > 0) {
-      return { provisioned: false, accounts: existing };
-    }
-  }
-
+// 적재할 레코드 일습을 조립한다(순수 — DB 접근 없음). 적재 방식(배치 insert / upsert)은 호출부가 정한다.
+function buildRows(userId: string, idPrefix: string) {
   const id = (suffix: string) => `${idPrefix}-${suffix}`;
 
-  // 24 계정 — 고정 id 멱등 upsert. 전부 source:'seed'(출처 정직 표기 — 실연동 아님).
-  for (const a of accounts) {
-    const data = {
-      userId,
-      name: a.service,
-      provider: toProvider(a.linkMethod),
-      category: a.category,
-      source: 'seed' as const,
-      lastUsedAt: lastUsedAt(a.lastUsedDays),
-      breached: a.breached,
-      passwordReused: a.passwordReused ?? false,
-      twoFactorEnabled: a.twoFactorEnabled ?? false,
-      discovered: a.discovered ?? false,
-      riskTags: deriveRiskTags(a),
-    };
-    await db.account.upsert({
-      where: { id: id(a.id) },
-      update: { ...data, riskTags: { set: data.riskTags } },
-      create: { id: id(a.id), ...data },
-    });
-  }
+  // 24 계정 — 전부 source:'seed'(출처 정직 표기 — 실연동 아님).
+  const accountRows = accounts.map((a) => ({
+    id: id(a.id),
+    userId,
+    name: a.service,
+    provider: toProvider(a.linkMethod),
+    category: a.category,
+    source: 'seed' as const,
+    lastUsedAt: lastUsedAt(a.lastUsedDays),
+    breached: a.breached,
+    passwordReused: a.passwordReused ?? false,
+    twoFactorEnabled: a.twoFactorEnabled ?? false,
+    discovered: a.discovered ?? false,
+    riskTags: deriveRiskTags(a),
+  }));
 
   // 유출 이력 — 서비스명으로 계정 매칭(있으면 연결).
-  for (const b of breaches) {
+  const breachRows = breaches.map((b) => {
     const matched = accounts.find((a) => a.service === b.service);
-    const data = {
+    return {
+      id: id(b.id),
       userId,
       accountId: matched ? id(matched.id) : null,
       service: b.service,
@@ -202,53 +184,42 @@ export async function provisionDemoData(
       severity: b.severity,
       resolved: b.resolved,
     };
-    await db.breach.upsert({
-      where: { id: id(b.id) },
-      update: { ...data, exposedFields: { set: data.exposedFields } },
-      create: { id: id(b.id), ...data },
-    });
-  }
+  });
 
   // 접속기록(이상접속 1 + 정상 4).
-  for (const l of ACCESS_LOGS) {
-    const data = {
-      accountId: id(l.accountKey),
-      timestamp: new Date(Date.now() - l.daysAgo * DAY),
-      location: l.location,
-      device: l.device,
-      suspicious: l.suspicious,
-    };
-    await db.accessLog.upsert({
-      where: { id: id(l.key) },
-      update: data,
-      create: { id: id(l.key), ...data },
-    });
-  }
+  const accessLogRows = ACCESS_LOGS.map((l) => ({
+    id: id(l.key),
+    accountId: id(l.accountKey),
+    timestamp: new Date(Date.now() - l.daysAgo * DAY),
+    location: l.location,
+    device: l.device,
+    suspicious: l.suspicious,
+  }));
 
   // 정리 요청 4건. 싸이월드 done(어제) = 회복규칙 데모.
-  for (const r of deleteRequests) {
+  const cleanupRows = deleteRequests.flatMap((r) => {
     const matched = accounts.find((a) => a.service === r.service);
-    if (!matched) continue;
+    if (!matched) return [];
     const status = CLEANUP_STATUS[r.status];
-    const data = {
-      userId,
-      accountId: id(matched.id),
-      actionType: CLEANUP_ACTION[r.service] ?? ('delete' as ActionType),
-      status,
-      completedAt: status === 'done' ? new Date(Date.now() - CLEANUP_DONE_DAYS_AGO * DAY) : null,
-    };
-    await db.cleanupRequest.upsert({
-      where: { id: id(r.id) },
-      update: data,
-      create: { id: id(r.id), ...data },
-    });
-  }
+    return [
+      {
+        id: id(r.id),
+        userId,
+        accountId: id(matched.id),
+        actionType: CLEANUP_ACTION[r.service] ?? ('delete' as ActionType),
+        status,
+        completedAt:
+          status === 'done' ? new Date(Date.now() - CLEANUP_DONE_DAYS_AGO * DAY) : null,
+      },
+    ];
+  });
 
   // 점수 스냅샷 이력 — 각 시점 상태를 v2 엔진으로 재계산(하드코딩 아님).
   // axes를 반드시 채운다: axes null 스냅샷은 v1 잔재로 취급돼 purge 대상이었다.
-  for (const p of SNAPSHOT_POINTS) {
+  const snapshotRows = SNAPSHOT_POINTS.map((p) => {
     const v2 = scoreV2(rowsAt(p.daysAgo));
-    const data = {
+    return {
+      id: id(p.key),
       userId,
       score: v2.composite ?? 0,
       coverage: v2.coverage,
@@ -256,14 +227,66 @@ export async function provisionDemoData(
       axes: toAxesSnapshot(v2.axes) as unknown as Prisma.InputJsonValue,
       createdAt: new Date(Date.now() - p.daysAgo * DAY),
     };
-    await db.scoreSnapshot.upsert({
-      where: { id: id(p.key) },
-      update: data,
-      create: { id: id(p.key), ...data },
-    });
+  });
+
+  return { accountRows, breachRows, accessLogRows, cleanupRows, snapshotRows };
+}
+
+// 한 사용자에게 데모 인벤토리 일습을 적재한다. User 레코드는 호출자가 먼저 보장해야 한다.
+export async function provisionDemoData(
+  db: PrismaClient,
+  userId: string,
+  opts: ProvisionOptions,
+): Promise<ProvisionResult> {
+  const { idPrefix, force = false } = opts;
+  const rows = buildRows(userId, idPrefix);
+
+  if (force) {
+    // 시드 스크립트 경로 — 기존 레코드를 상대 시각 기준으로 갱신해야 하므로 건별 upsert.
+    // 로그인 응답 시간과 무관한 배치 실행이라 왕복 횟수를 최적화하지 않는다.
+    for (const { id, ...data } of rows.accountRows) {
+      await db.account.upsert({
+        where: { id },
+        update: { ...data, riskTags: { set: data.riskTags } },
+        create: { id, ...data },
+      });
+    }
+    for (const { id, ...data } of rows.breachRows) {
+      await db.breach.upsert({
+        where: { id },
+        update: { ...data, exposedFields: { set: data.exposedFields } },
+        create: { id, ...data },
+      });
+    }
+    for (const { id, ...data } of rows.accessLogRows) {
+      await db.accessLog.upsert({ where: { id }, update: data, create: { id, ...data } });
+    }
+    for (const { id, ...data } of rows.cleanupRows) {
+      await db.cleanupRequest.upsert({ where: { id }, update: data, create: { id, ...data } });
+    }
+    for (const { id, ...data } of rows.snapshotRows) {
+      await db.scoreSnapshot.upsert({ where: { id }, update: data, create: { id, ...data } });
+    }
+    return { provisioned: true, accounts: rows.accountRows.length };
   }
 
-  return { provisioned: true, accounts: accounts.length };
+  // 로그인 경로 — 이미 계정을 가진 사용자는 건드리지 않는다(사용자 데이터 보호 + 재로그인 비용 0).
+  const existing = await db.account.count({ where: { userId } });
+  if (existing > 0) {
+    return { provisioned: false, accounts: existing };
+  }
+
+  // 신규 사용자는 기존 레코드가 없으므로 배치 insert로 왕복을 5회로 줄인다(로그인 지연 최소화).
+  // 트랜잭션: 중간 실패로 부분 적재되면 위 count 가드가 이후 프로비저닝을 영구히 건너뛰게 된다.
+  await db.$transaction([
+    db.account.createMany({ data: rows.accountRows }),
+    db.breach.createMany({ data: rows.breachRows }),
+    db.accessLog.createMany({ data: rows.accessLogRows }),
+    db.cleanupRequest.createMany({ data: rows.cleanupRows }),
+    db.scoreSnapshot.createMany({ data: rows.snapshotRows }),
+  ]);
+
+  return { provisioned: true, accounts: rows.accountRows.length };
 }
 
 // 프로비저닝 결과 정리(검증 스크립트 전용). 사용자 데이터 삭제 경로가 아니다.
