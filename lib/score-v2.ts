@@ -97,6 +97,37 @@ export type ScoreV2Result = {
   expectedGains: ExpectedGainItem[];
 };
 
+// ScoreSnapshot.axes 저장 형태(재조회·이력 렌더용). key는 객체 키로 유지해 중복 제거.
+export type AxesSnapshot = Record<
+  AxisKey,
+  {
+    score: number | null;
+    measured: boolean;
+    coverage: number;
+    coveredCount: number;
+    totalCount: number;
+    topFinding: string | null;
+  }
+>;
+
+// AxisScore 레코드 → 스냅샷 저장용 평면 JSON. 순수 변환(DB 의존 없음)이라
+// score-service(런타임 append)와 provision-demo(이력 백필)가 공유한다.
+export function toAxesSnapshot(axes: Record<AxisKey, AxisScore>): AxesSnapshot {
+  const keys: AxisKey[] = ['exposure', 'surface', 'hygiene', 'threat'];
+  return keys.reduce((acc, k) => {
+    const a = axes[k];
+    acc[k] = {
+      score: a.score,
+      measured: a.measured,
+      coverage: a.coverage,
+      coveredCount: a.coveredCount,
+      totalCount: a.totalCount,
+      topFinding: a.topFinding,
+    };
+    return acc;
+  }, {} as AxesSnapshot);
+}
+
 // ── 파생 판정 헬퍼 ──
 function isStale(r: ScoreRowV2): boolean {
   return (

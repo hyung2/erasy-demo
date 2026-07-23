@@ -6,9 +6,11 @@ import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 import {
   scoreV2,
+  toAxesSnapshot,
   type ScoreRowV2,
   type AxisKey,
   type AxisScore,
+  type AxesSnapshot,
   type ExpectedGainItem,
   type Grade,
 } from './score-v2';
@@ -24,18 +26,7 @@ const SNAPSHOT_REFRESH_MS = 24 * 60 * 60 * 1000; // 동일 점수여도 24h 경�
 const TREND_POINTS = 6;
 const SUSPICIOUS_WINDOW_DAYS = 90; // T축 이상접속 관측 윈도우(SSOT·시드 정합)
 
-// 스냅샷 axes JSON 형태(재조회·이력 렌더용) — raw score + measured + coverage 모수.
-type AxesSnapshot = Record<
-  AxisKey,
-  {
-    score: number | null;
-    measured: boolean;
-    coverage: number;
-    coveredCount: number;
-    totalCount: number;
-    topFinding: string | null;
-  }
->;
+// 스냅샷 axes JSON 형태(재조회·이력 렌더용)는 score-v2의 AxesSnapshot·toAxesSnapshot 공유.
 
 export type ScoreServiceResult = {
   score: number; // 종합(composite). 측정 불가 시 0(정직 표기는 measured 부재로 별도 처리)
@@ -131,23 +122,6 @@ function memoryRowsV2(): ScoreRowV2[] {
       sessionsCleared: false,
     };
   });
-}
-
-// AxisScore 레코드 → 스냅샷 저장용 평면 JSON(key는 객체 키로 유지, 중복 제거).
-function toAxesSnapshot(axes: Record<AxisKey, AxisScore>): AxesSnapshot {
-  const keys: AxisKey[] = ['exposure', 'surface', 'hygiene', 'threat'];
-  return keys.reduce((acc, k) => {
-    const a = axes[k];
-    acc[k] = {
-      score: a.score,
-      measured: a.measured,
-      coverage: a.coverage,
-      coveredCount: a.coveredCount,
-      totalCount: a.totalCount,
-      topFinding: a.topFinding,
-    };
-    return acc;
-  }, {} as AxesSnapshot);
 }
 
 // 스냅샷 조건부 append + 추이 산출. 실패해도 점수 응답은 유지(스냅샷은 부가 이력).

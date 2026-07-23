@@ -5,6 +5,7 @@
 import NextAuth from 'next-auth';
 import { authConfig } from './auth.config';
 import { prisma } from '@/lib/prisma';
+import { provisionDemoData } from '@/lib/provision-demo';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -22,9 +23,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           update: { email, name: user.name ?? null },
           create: { id: sub, email, name: user.name ?? null },
         });
+        // 첫 로그인 데모 데이터 프로비저닝(B2) — 본인 소유 24계정을 만들어 둔다.
+        // 계정을 이미 가진 사용자는 멱등 skip이라 재로그인이 사용자 데이터를 덮지 않는다.
+        const p = await provisionDemoData(prisma, sub, { idPrefix: `u${sub}` });
+        if (p.provisioned) {
+          console.info(`[auth.signIn] demo data provisioned: user=${sub}, accounts=${p.accounts}`);
+        }
       } catch (e) {
-        // DB 미연결이어도 로그인(JWT)은 막지 않음. 데이터는 이후 동기화.
-        console.warn('[auth.signIn] User upsert skipped:', (e as Error).message);
+        // DB 미연결·프로비저닝 실패여도 로그인(JWT)은 막지 않음. 화면은 기존 폴백이 받는다.
+        console.warn('[auth.signIn] User upsert/provision skipped:', (e as Error).message);
       }
       return true;
     },
