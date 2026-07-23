@@ -122,6 +122,7 @@ function rowsAt(snapshotDaysAgo: number): ScoreRowV2[] {
       lastUsedDays: a.lastUsedDays,
       twoFactorEnabled: a.twoFactorEnabled ?? false,
       passwordReused: a.passwordReused ?? false,
+      passwordSignalObserved: true, // 시드 인벤토리는 전부 수집 경로 있음(source='seed')
       discovered: a.discovered ?? false,
       breachedUnresolved: b !== null,
       breachedPasswordExposed: b?.exposedFields.includes('비밀번호') ?? false,

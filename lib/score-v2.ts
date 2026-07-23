@@ -51,6 +51,10 @@ export type ScoreRowV2 = {
   lastUsedDays: number | null; // null = 미확인(무감점 + coverage 하락)
   twoFactorEnabled: boolean;
   passwordReused: boolean;
+  // 비밀번호·2FA 위생을 판정할 근거가 있는가(H축 분모 편입 조건).
+  //   시드·OAuth 연동 계정 = true(수집 경로 존재). 사용자가 서비스명만 적어 직접 추가하고
+  //   아무 신호도 신고하지 않은 계정 = false. false를 분모에 넣으면 "미확인"이 "안전"으로 계상된다.
+  passwordSignalObserved: boolean;
   discovered: boolean; // 미인지 계정(S축)
   breachedUnresolved: boolean; // Breach 관계(resolved=false)에서 파생(E축)
   breachedPasswordExposed: boolean; // exposedFields에 "비밀번호" 포함
@@ -222,9 +226,19 @@ export function computeSurface(rows: ScoreRowV2[]): AxisScore {
 export function computeHygiene(rows: ScoreRowV2[]): AxisScore {
   const P = SCORE_V2_PARAMS;
 
-  // passwordHolders = manual ∪ 비밀번호 신호 관측(재사용 이력 또는 교체 이력).
+  // passwordHolders = 위생을 판정할 근거가 있는 계정
+  //   = manual(비밀번호 로그인, 단 신호 관측된 것만) ∪ 비밀번호 신호 관측(재사용·교체 이력).
+  // [미관측 배제] 사용자가 서비스명만 적어 직접 추가한 계정은 로그인 방식을 알 수 없어
+  //   provider가 manual로 기본 지정될 뿐, 비밀번호 위생을 판정할 근거가 없다. 이를 분모에
+  //   넣으면 "고유 비밀번호를 쓰는 깨끗한 계정"으로 계상돼 재사용률이 희석되고, 계정을
+  //   발견할수록 점수가 오른다(미확인을 안전으로 단정 = 1.3 정직 표기 원칙 위반).
+  //   재사용·2FA를 신고하면 그 시점부터 관측으로 전환돼 정상 계상된다.
   const isHolder = (r: ScoreRowV2) =>
-    r.provider === 'manual' || r.passwordReused || r.passwordChanged;
+    (r.provider === 'manual' && r.passwordSignalObserved) ||
+    r.passwordReused ||
+    r.passwordChanged;
+  // 2FA 항 분모도 동일 조건 — 미관측 계정을 "2FA 없는 계정"으로 단정하지 않는다.
+  const isManualHolder = (r: ScoreRowV2) => r.provider === 'manual' && r.passwordSignalObserved;
 
   // 재사용 항 분모: 활성 holders + (제거된 holders 중 비재사용=안전 → 신용 유지).
   //   재사용(위험) holder 제거는 분자·분모 동시 제외(비율 개선).
@@ -238,7 +252,7 @@ export function computeHygiene(rows: ScoreRowV2[]): AxisScore {
   let coveredCount = 0;
   for (const r of rows) {
     const holder = isHolder(r);
-    const manual = r.provider === 'manual';
+    const manual = isManualHolder(r);
     if (holder) coveredCount += 1;
 
     if (r.removed) {

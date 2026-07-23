@@ -83,6 +83,11 @@ function toRowV2(r: DbAccountRow): ScoreRowV2 {
         : Math.max(0, Math.floor((Date.now() - r.lastUsedAt.getTime()) / DAY)),
     twoFactorEnabled: r.twoFactorEnabled,
     passwordReused: r.passwordReused,
+    // 위생 판정 근거 보유 여부. 시드·OAuth 연동은 수집 경로가 있어 관측으로 본다.
+    //   사용자가 서비스명만 적어 직접 추가한 계정(source=user_input)은 신호를 하나라도
+    //   신고했을 때만 관측 전환 — 미신고를 "깨끗한 계정"으로 계상하지 않는다(H축 분모).
+    passwordSignalObserved:
+      r.source !== 'user_input' || r.passwordReused || r.twoFactorEnabled,
     discovered: r.discovered,
     breachedUnresolved: unresolved.length > 0,
     breachedPasswordExposed: unresolved.some((b) =>
@@ -112,6 +117,7 @@ function memoryRowsV2(): ScoreRowV2[] {
       lastUsedDays: a.lastUsedDays,
       twoFactorEnabled: a.twoFactorEnabled ?? false,
       passwordReused: a.passwordReused ?? false,
+      passwordSignalObserved: true, // 시드 인벤토리는 전부 수집 경로 있음
       discovered: a.discovered ?? false,
       breachedUnresolved: b !== null,
       breachedPasswordExposed: b?.exposedFields.includes('비밀번호') ?? false,
