@@ -1,7 +1,9 @@
 'use client';
 
-// 로그인 진입. "구글로 시작하기" → 실 Google OAuth(Auth.js v5, 최소 scope) → 콜백 후 /scanning → /dashboard.
-// 실 인증 배선(T2.1). 실동작은 env 시크릿 도착 후 검증. Google 계정 선택은 Google 자체 화면이 담당(기존 가짜 피커 제거).
+// 로그인 진입. 두 경로가 같은 결과 상태로 착지한다.
+//  (1) 구글로 시작하기 → 실 Google OAuth(Auth.js v5, 최소 scope)
+//  (2) 이메일로 가입/로그인 → /api/register + credentials signIn
+// 어느 쪽이든 첫 진입 시 본인 소유 데모 데이터 24계정이 프로비저닝된 뒤 /scanning → /dashboard.
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { brand, demo } from '@/content/copy';
@@ -17,13 +19,69 @@ function GoogleG({ size = 18 }: { size?: number }) {
   );
 }
 
-export default function LoginPage() {
-  const [pending, setPending] = useState(false);
+type Mode = 'signin' | 'signup';
 
-  function startLogin() {
-    setPending(true);
+export default function LoginPage() {
+  const [pending, setPending] = useState<'google' | 'email' | null>(null);
+  const [mode, setMode] = useState<Mode>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const copy = demo.login;
+  const busy = pending !== null;
+
+  function startGoogle() {
+    setPending('google');
     // 콜백 성공 후 /scanning으로 복귀(스캔 연출 → /dashboard). signIn이 페이지를 이탈시킨다.
     void signIn('google', { redirectTo: '/scanning' });
+  }
+
+  function switchMode(next: Mode) {
+    setMode(next);
+    setError(null);
+  }
+
+  async function submitEmail(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy) return;
+    setError(null);
+    setPending('email');
+
+    try {
+      if (mode === 'signup') {
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email, password, name }),
+        });
+        const json = (await res.json()) as { ok: boolean; error?: string };
+        if (!json.ok) {
+          setError(json.error ?? '가입에 실패했습니다.');
+          setPending(null);
+          return;
+        }
+      }
+
+      // 가입 직후에도 같은 자격으로 바로 로그인시킨다(가입→로그인 두 번 입력하는 마찰 제거).
+      const result = await signIn('credentials', { email, password, redirect: false });
+      if (result?.error) {
+        setError(
+          mode === 'signup'
+            ? '가입은 됐지만 로그인에 실패했습니다. 다시 로그인해 주세요.'
+            : '이메일 또는 비밀번호가 맞지 않습니다.',
+        );
+        setPending(null);
+        return;
+      }
+
+      // 성공 — 구글 경로와 동일하게 스캔 연출을 거쳐 대시보드로.
+      window.location.href = '/scanning';
+    } catch {
+      setError('네트워크 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+      setPending(null);
+    }
   }
 
   return (
@@ -33,27 +91,110 @@ export default function LoginPage() {
           <span className="logo">{brand.nameEn}</span>
         </div>
 
-        <span className="auth-notice">{demo.login.notice}</span>
+        <span className="auth-notice">{copy.notice}</span>
 
         <div className="auth-head">
-          <h1>{demo.login.headline}</h1>
-          <p>{demo.login.subhead}</p>
+          <h1>{copy.headline}</h1>
+          <p>{copy.subhead}</p>
         </div>
 
         <div className="panel auth-card">
-          <button
-            type="button"
-            className="btn btn-google lg"
-            onClick={startLogin}
-            disabled={pending}
-          >
+          <div className="auth-tabs" role="tablist" aria-label="로그인 방식">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'signin'}
+              className={`auth-tab${mode === 'signin' ? ' is-active' : ''}`}
+              onClick={() => switchMode('signin')}
+              disabled={busy}
+            >
+              {copy.tabSignin}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'signup'}
+              className={`auth-tab${mode === 'signup' ? ' is-active' : ''}`}
+              onClick={() => switchMode('signup')}
+              disabled={busy}
+            >
+              {copy.tabSignup}
+            </button>
+          </div>
+
+          <form className="auth-form" onSubmit={submitEmail}>
+            {mode === 'signup' && (
+              <label className="auth-field">
+                <span>{copy.nameLabel}</span>
+                <input
+                  className="text-input"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={copy.namePlaceholder}
+                  autoComplete="name"
+                  maxLength={50}
+                  disabled={busy}
+                />
+              </label>
+            )}
+
+            <label className="auth-field">
+              <span>{copy.emailLabel}</span>
+              <input
+                className="text-input"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={copy.emailPlaceholder}
+                autoComplete="email"
+                required
+                disabled={busy}
+              />
+            </label>
+
+            <label className="auth-field">
+              <span>{copy.passwordLabel}</span>
+              <input
+                className="text-input"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={mode === 'signup' ? copy.passwordHint : copy.passwordPlaceholder}
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                required
+                minLength={mode === 'signup' ? 10 : undefined}
+                disabled={busy}
+              />
+            </label>
+
+            {error && (
+              <p className="status danger" role="alert">
+                {error}
+              </p>
+            )}
+
+            <button type="submit" className="btn btn-primary lg" disabled={busy}>
+              {pending === 'email'
+                ? copy.pending
+                : mode === 'signup'
+                  ? copy.submitSignup
+                  : copy.submitSignin}
+            </button>
+          </form>
+
+          <div className="auth-divider">
+            <span>{copy.divider}</span>
+          </div>
+
+          <button type="button" className="btn btn-google lg" onClick={startGoogle} disabled={busy}>
             <GoogleG />
-            {demo.login.google}
+            {copy.google}
           </button>
-          <p className="auth-eyebrow">{demo.login.eyebrow}</p>
+          <p className="auth-eyebrow">{copy.eyebrow}</p>
         </div>
 
-        <p className="auth-disclaimer">{demo.login.disclaimer}</p>
+        <p className="auth-disclaimer">{copy.disclaimer}</p>
       </div>
     </div>
   );

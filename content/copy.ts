@@ -63,21 +63,30 @@ export const landing = {
   },
 } as const;
 
-// 실서비스 데모 흐름 문구(로그인 진입 · 스캔 연출 · 정리 결과). 전부 연출 — 실제 인증/백엔드 없음.
+// 실서비스 데모 흐름 문구(로그인 진입 · 스캔 연출 · 정리 결과).
+// 정직성 주의: 인증(Auth.js)·데이터베이스·유출 조회(HIBP)는 **실제로 동작한다**.
+// 예시인 것은 계정 인벤토리뿐이다. "실제 인증이 아니다"류의 옛 문구는 사실과 달라 폐기했다.
 export const demo = {
   login: {
-    eyebrow: '데모 로그인',
-    notice: '실제 구글 인증이 아닙니다 · 연출 데모',
+    eyebrow: '구글 계정 정보는 이름과 이메일만 받습니다',
+    notice: '계정 인벤토리는 예시 데이터 · 로그인과 유출 조회는 실제 동작',
     headline: '흩어진 계정, 한 화면에서 되찾기',
     subhead: '로그인하면 흩어진 계정을 스캔해 안전도 점수와 함께 보여드립니다.',
     google: '구글로 시작하기',
-    pickerTitle: '계정 선택',
-    pickerNotice: '연출용 예시 계정입니다. 실제 로그인은 이뤄지지 않습니다.',
-    accounts: [
-      { name: '김민준', email: 'minjun.kim@example.com' },
-      { name: '이서연', email: 'seoyeon.lee@example.com' },
-    ],
-    disclaimer: '이 데모의 계정 · 점수 · 유출 내역은 제품 이해를 돕기 위한 예시 데이터입니다. 실제 인증 · 백엔드 · 유출 조회는 이뤄지지 않습니다.',
+    tabSignin: '로그인',
+    tabSignup: '가입하기',
+    nameLabel: '이름',
+    namePlaceholder: '표시할 이름 (선택)',
+    emailLabel: '이메일',
+    emailPlaceholder: 'you@example.com',
+    passwordLabel: '비밀번호',
+    passwordPlaceholder: '비밀번호를 입력하세요',
+    passwordHint: '10자 이상',
+    submitSignin: '로그인',
+    submitSignup: '가입하고 시작하기',
+    pending: '처리 중…',
+    divider: '또는',
+    disclaimer: '가입하면 예시 계정 24개가 담긴 내 진단 화면이 만들어집니다. 비밀번호는 해시로만 보관하며, 다른 서비스의 비밀번호는 저장하지 않습니다.',
   },
   scanning: {
     title: '계정을 찾는 중…',

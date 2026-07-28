@@ -1,7 +1,9 @@
 // 이레이지(Erasy) STEP02 MVP — Prisma 스키마
 // SSOT: 03-step02-mvp/db-schema-draft-T1.4.md (Vault) + G0 컴포넌트 계약
 // 스택 락(T1.2): PostgreSQL + Prisma. enum·String[]는 PostgreSQL 네이티브 사용.
-// 자격증명 미저장 원칙: password/passwordHash 컬럼 부재. 점수 신호는 비번값 없이 표현.
+// 자격증명 미저장 원칙: **사용자가 관리하는 외부 서비스(구글·네이버·넷플릭스…)의 비밀번호·토큰을
+// 저장하지 않는다.** Account 모델에 password 계열 컬럼이 없는 이유이며, 점수 신호는 비번값 없이 표현한다.
+// User.passwordHash는 이 원칙의 대상이 아니다 — 본 서비스 자체 로그인 수단이며 원문이 아닌 scrypt 해시만 보관.
 
 generator client {
   provider = "prisma-client-js"
@@ -77,11 +79,14 @@ enum AccountSource {
 
 // ── Models ──
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id    String  @id @default(cuid())
+  email String  @unique
+  name  String?
+  // 자체 가입(이메일+비밀번호) 사용자만 채워진다. 소셜 로그인 사용자는 null.
+  // 형식은 lib/password.ts의 `scrypt$N$r$p$salt$hash`. 원문 비밀번호는 저장하지 않는다.
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   accounts        Account[]
   cleanupRequests CleanupRequest[]
