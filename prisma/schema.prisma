@@ -75,6 +75,7 @@ enum AccountSource {
   seed // 페르소나 데모 시드
   user_input // 사용자 직접 입력
   oauth_linked // 로그인 provider 본인 계정만(연결앱 조회 아님)
+  mail_scan // 메일함 스캔으로 발견(T5.6). 활동일은 수신일 기준 "추정치" — 실 로그인일 아님
 }
 
 // ── Models ──

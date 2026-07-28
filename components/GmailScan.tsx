@@ -15,6 +15,10 @@ type ScanData = {
   scanned: number;
   catalogSize: number;
   failedQueries: number;
+  /** 인벤토리에 새로 추가된 계정 수. */
+  discoveredCount: number;
+  /** 활동일이 갱신된 기존 계정 수. */
+  updatedCount: number;
 };
 
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
@@ -147,7 +151,8 @@ export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
       {data && (
         <div style={{ marginTop: 16 }}>
           <p className="status safe" role="status">
-            {data.hits.length}개 서비스를 찾았습니다
+            {data.hits.length}개 서비스를 찾았습니다 — 몰랐던 계정 {data.discoveredCount}개 추가 ·
+            활동일 {data.updatedCount}개 갱신
           </p>
 
           <ul className="scan-hits">

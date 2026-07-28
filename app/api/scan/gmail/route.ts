@@ -11,8 +11,9 @@
 export const dynamic = 'force-dynamic';
 
 import { auth } from '@/auth';
+import { prisma } from '@/lib/prisma';
 import { CATALOG, queryFor } from '@/lib/gmail-catalog';
-import { foldMessages, type MessageMeta } from '@/lib/gmail-scan';
+import { foldMessages, diffAgainstInventory, type MessageMeta, type ScanHit } from '@/lib/gmail-scan';
 
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 // 서비스별로 최신 1건만 필요하다. 메일함 전체를 훑지 않는 것이 속도와 최소수집 양쪽에 맞는다.
@@ -60,6 +61,57 @@ async function latestMessageFor(
   return { from, receivedAt };
 }
 
+/**
+ * 스캔 결과를 인벤토리에 반영한다. 이게 없으면 S축(방치 표면) 승격은 화면 장식에 그친다.
+ *
+ * 두 가지 안전장치
+ *  - 기존 계정의 활동일은 **메일 추정치가 더 최신일 때만** 갱신한다. 실측·자가신고로 들어온
+ *    최신 값을 오래된 메일 추정치로 덮으면 신호가 나빠진다.
+ *  - 새로 발견한 계정은 `source: mail_scan` + `discovered: true`로 표시해 시드·직접입력과 섞이지 않게 한다.
+ */
+async function applyToInventory(userId: string, hits: ScanHit[]) {
+  if (hits.length === 0) return { discoveredCount: 0, updatedCount: 0 };
+
+  const existing = await prisma.account.findMany({
+    where: { userId },
+    select: { id: true, name: true, lastUsedAt: true },
+  });
+
+  const { discovered, updated } = diffAgainstInventory(
+    hits,
+    existing.map((a) => a.name),
+  );
+
+  const byName = new Map(existing.map((a) => [a.name.replace(/\s+/g, '').toLowerCase(), a]));
+
+  let updatedCount = 0;
+  for (const hit of updated) {
+    const row = byName.get(hit.service.replace(/\s+/g, '').toLowerCase());
+    if (!row) continue;
+    const seenAt = new Date(hit.lastSeenAt);
+    if (row.lastUsedAt && row.lastUsedAt >= seenAt) continue; // 더 최신 값은 보존
+    await prisma.account.update({ where: { id: row.id }, data: { lastUsedAt: seenAt } });
+    updatedCount += 1;
+  }
+
+  if (discovered.length > 0) {
+    await prisma.account.createMany({
+      data: discovered.map((hit) => ({
+        userId,
+        name: hit.service,
+        // 메일로는 가입 방식을 알 수 없다 — provider를 추측하지 않고 manual로 둔다.
+        provider: 'manual' as const,
+        category: hit.category,
+        source: 'mail_scan' as const,
+        discovered: true,
+        lastUsedAt: new Date(hit.lastSeenAt),
+      })),
+    });
+  }
+
+  return { discoveredCount: discovered.length, updatedCount };
+}
+
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user?.id) return fail('로그인이 필요합니다.', 401);
@@ -103,11 +155,13 @@ export async function POST(req: Request) {
     }
 
     const result = foldMessages(messages, Date.now());
+    const applied = await applyToInventory(session.user.id, result.hits);
 
     return Response.json({
       ok: true,
       data: {
         ...result,
+        ...applied,
         // 정직 표기용 — 조회하지 못한 서비스 수를 숨기지 않는다.
         catalogSize: CATALOG.length,
         failedQueries: failed,
