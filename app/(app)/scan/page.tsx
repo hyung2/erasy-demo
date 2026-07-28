@@ -6,6 +6,7 @@ import { ServiceAvatar } from '@/components/ServiceAvatar';
 import { CountUp } from '@/components/CountUp';
 import { riskLabel, riskClass, type Risk } from '@/lib/dummy-data';
 import { DISCOVERY_PATHS, linksByPath, type DiscoveryPath } from '@/lib/deep-links';
+import GmailScan from '@/components/GmailScan';
 import type { AccountDTO, LastUsedBucket, AccountUpdateRequest } from '@/lib/api-types';
 
 type Filter = 'all' | 'social' | 'overseas' | 'unused';
@@ -419,6 +420,17 @@ export default function ScanPage() {
           </div>
         )}
       </section>
+
+      {/* 발견 삼각형 자동 경로 — 메일함 스캔(T5.6). 아래 수동 3경로보다 먼저 노출한다. */}
+      <div id="gmail-scan">
+        <GmailScan
+          onApplied={() => {
+            // 스캔 결과가 인벤토리·점수에 반영될 수 있으므로 둘 다 다시 읽는다.
+            void loadAccounts();
+            void refreshScore();
+          }}
+        />
+      </div>
 
       {/* 놓친 계정 찾기 — 발견 삼각형 3경로(외부 관리 페이지 안내). 자동 조회 아님·본인 확인. */}
       <section className="panel" id="discovery" aria-label="놓친 계정 찾기">

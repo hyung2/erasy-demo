@@ -14,7 +14,7 @@ export type AccountDTO = {
   name: string;
   category: 'social' | 'overseas' | 'domestic';
   provider: 'google' | 'naver' | 'kakao' | 'apple' | 'manual';
-  source: 'seed' | 'user_input' | 'oauth_linked';
+  source: 'seed' | 'user_input' | 'oauth_linked' | 'mail_scan';
   lastUsedDays: number; // lastUsedAt에서 파생(런타임)
   breached: boolean;
   risk: 'low' | 'medium' | 'high'; // deriveRisk 파생

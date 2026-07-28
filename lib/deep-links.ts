@@ -26,7 +26,7 @@ export const DISCOVERY_PATHS: Record<
   },
   'self-verify': {
     title: '직접 가입한 국내 계정',
-    guide: '본인인증으로 가입한 국내 사이트는 e프라이버시 클린서비스에서 가입 내역을 조회할 수 있어요.',
+    guide: '본인인증으로 가입한 국내 사이트는 개인정보 포털의 “본인확인 내역조회”에서 확인할 수 있어요.',
   },
   'breach-lookup': {
     title: '유출된 계정',
@@ -61,11 +61,14 @@ export const DEEP_LINKS: DeepLink[] = [
     provider: 'naver',
   },
   // self-verify (직접가입 본인인증)
+  // 2026-07-28 실측: 구 e프라이버시 클린서비스(www.eprivacy.go.kr)는 응답 없음(DNS는 해석되나 TCP 타임아웃).
+  //   서비스는 개인정보 포털의 "정보주체 권리행사 > 본인확인 내역조회"로 이관됨(포털 문서상 "구 e프라이버시
+  //   클린서비스"로 과거형 표기). 아래 URL은 200 실측 확인. 이관 사실은 심사 차별화 서사에도 반영 필요.
   {
     id: 'eprivacy-clean',
-    label: 'e프라이버시 클린서비스 확인',
-    description: '주민번호·휴대폰 본인확인으로 가입한 국내 사이트 내역',
-    href: 'https://www.eprivacy.go.kr',
+    label: '본인확인 내역조회',
+    description: '주민번호·휴대폰 본인확인으로 가입한 국내 사이트 내역 (개인정보 포털)',
+    href: 'https://www.privacy.go.kr/front/demand/prsnIdntStep1.do',
     path: 'self-verify',
   },
   // breach-lookup (유출)
