@@ -209,9 +209,13 @@ export async function POST(req: Request) {
       },
     });
   } catch (e) {
-    const msg = (e as Error).name === 'AbortError' ? '시간 초과' : (e as Error).message;
-    console.error('[scan/gmail] failed:', msg); // 토큰은 로그에 남기지 않는다.
-    return fail('메일함 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.', 502);
+    const err = e as Error;
+    const msg = err.name === 'AbortError' ? '시간 초과' : err.message;
+    // 토큰은 로그에 남기지 않는다. 스택은 실패 지점 특정에 필요해 남긴다.
+    console.error('[scan/gmail] failed:', msg, err.stack);
+    // 로컬 개발에서만 사유를 화면까지 올린다 — prod는 일반 문구를 유지한다.
+    const detail = process.env.NODE_ENV === 'development' ? ` [${msg}]` : '';
+    return fail(`메일함 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.${detail}`, 502);
   } finally {
     clearTimeout(timer);
   }
