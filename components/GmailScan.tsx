@@ -12,6 +12,8 @@ import type { ScanHit } from '@/lib/gmail-scan';
 type ScanData = {
   hits: ScanHit[];
   unmatchedDomains: number;
+  /** 개인 메일로 판단해 제외한 건수 — 판별 근거라 화면에도 드러낸다. */
+  excludedPersonal: number;
   scanned: number;
   catalogSize: number;
   failedQueries: number;
@@ -135,7 +137,8 @@ export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
 
       <p className="score-sub">
         받은 메일의 발신자만 확인해 가입한 서비스를 찾습니다. 메일 본문은 읽지 않고, 발신자와 날짜만
-        사용합니다. 권한은 이 조회에만 쓰이고 저장하지 않습니다.
+        사용합니다. 권한은 이 조회에만 쓰이고 저장하지 않습니다. 네이버·카카오처럼 개인 메일 주소로도
+        쓰이는 도메인은 서비스 알림 주소에서 온 메일만 셉니다.
       </p>
 
       <button type="button" className="btn btn-primary" onClick={runScan} disabled={pending}>
@@ -176,6 +179,18 @@ export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
             {data.unmatchedDomains > 0 && `(미확인 발신 도메인 ${data.unmatchedDomains}곳)`}.
             {data.failedQueries > 0 && ` 조회 실패 ${data.failedQueries}건은 결과에서 빠졌습니다.`}
           </p>
+          {data.excludedPersonal > 0 && (
+            <p className="advice">
+              개인이 보낸 메일 {data.excludedPersonal}건은 가입 근거에서 제외했습니다. 네이버·카카오는
+              개인 메일 주소로도 쓰여, 지인이 보낸 메일을 가입으로 세지 않습니다.
+            </p>
+          )}
+          {data.discoveredCount > 0 && (
+            <p className="advice">
+              새로 추가한 계정은 <strong>가입 방식 미확인</strong>으로 둡니다. 메일 발신자만으로는
+              간편가입인지 이메일 가입인지 알 수 없어 추측하지 않습니다.
+            </p>
+          )}
         </div>
       )}
     </section>

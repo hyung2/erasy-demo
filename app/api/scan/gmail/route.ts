@@ -12,11 +12,18 @@ export const dynamic = 'force-dynamic';
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-import { CATALOG, queryFor } from '@/lib/gmail-catalog';
+import {
+  CATALOG,
+  candidateCountFor,
+  matchSender,
+  queryFor,
+  type CatalogEntry,
+} from '@/lib/gmail-catalog';
 import { foldMessages, diffAgainstInventory, type MessageMeta, type ScanHit } from '@/lib/gmail-scan';
 
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 // 서비스별로 최신 1건만 필요하다. 메일함 전체를 훑지 않는 것이 속도와 최소수집 양쪽에 맞는다.
+// 예외: 개인 메일 도메인(naver.com·kakao.com)은 최신 1건이 지인 메일일 수 있어 여러 건을 훑는다.
 const LOOKBACK = 'newer_than:3y';
 
 type ListResponse = { messages?: Array<{ id: string }> };
@@ -29,23 +36,12 @@ function fail(message: string, status: number) {
   return Response.json({ ok: false, error: message }, { status });
 }
 
-async function latestMessageFor(
+/** 메시지 1건의 메타데이터(From·Date)만 가져온다. 본문은 요청하지 않는다. */
+async function messageMeta(
   token: string,
-  query: string,
+  id: string,
   signal: AbortSignal,
 ): Promise<MessageMeta | null> {
-  const listUrl = `${GMAIL}/messages?maxResults=1&q=${encodeURIComponent(`(${query}) ${LOOKBACK}`)}`;
-  const listRes = await fetch(listUrl, {
-    headers: { authorization: `Bearer ${token}` },
-    signal,
-  });
-  if (!listRes.ok) throw new Error(`list ${listRes.status}`);
-
-  const list = (await listRes.json()) as ListResponse;
-  const id = list.messages?.[0]?.id;
-  if (!id) return null;
-
-  // 본문 제외 — 메타데이터 포맷 + 헤더 2종만 요청한다.
   const metaUrl = `${GMAIL}/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Date`;
   const metaRes = await fetch(metaUrl, {
     headers: { authorization: `Bearer ${token}` },
@@ -59,6 +55,44 @@ async function latestMessageFor(
   if (!from || !Number.isFinite(receivedAt)) return null;
 
   return { from, receivedAt };
+}
+
+/**
+ * 서비스 한 곳의 "가장 최근 서비스 알림" 1건을 찾는다.
+ *
+ * 질의는 도메인 전체로 던지고 발신자 판정은 여기서 한다(이슈 #4). 개인 메일 도메인은
+ * 최신순 후보를 훑다가 **처음 만나는 서비스 알림**을 채택하고, 그 앞에서 걸러낸 지인 메일 수를
+ * 함께 돌려준다. 질의 자체를 발신 전용 주소로 좁히지 않는 이유는 목록에 없는 변종 주소를
+ * 통째로 놓쳐 미발견이 되기 때문이다.
+ */
+async function latestServiceMessage(
+  token: string,
+  entry: CatalogEntry,
+  signal: AbortSignal,
+): Promise<{ message: MessageMeta | null; excludedPersonal: number }> {
+  const limit = candidateCountFor(entry);
+  const query = queryFor(entry);
+  const listUrl = `${GMAIL}/messages?maxResults=${limit}&q=${encodeURIComponent(`(${query}) ${LOOKBACK}`)}`;
+  const listRes = await fetch(listUrl, {
+    headers: { authorization: `Bearer ${token}` },
+    signal,
+  });
+  if (!listRes.ok) throw new Error(`list ${listRes.status}`);
+
+  const list = (await listRes.json()) as ListResponse;
+  const ids = (list.messages ?? []).map((m) => m.id);
+
+  let excludedPersonal = 0;
+  for (const id of ids) {
+    const meta = await messageMeta(token, id, signal);
+    if (!meta) continue;
+
+    const verdict = matchSender(meta.from);
+    if (verdict.kind === 'service') return { message: meta, excludedPersonal };
+    if (verdict.kind === 'personal') excludedPersonal += 1;
+    // unmatched·invalid: 도메인으로 질의했는데 매칭이 안 된 예외 케이스 — 조용히 넘긴다.
+  }
+  return { message: null, excludedPersonal };
 }
 
 /**
@@ -77,7 +111,7 @@ async function applyToInventory(userId: string, hits: ScanHit[]) {
     select: { id: true, name: true, lastUsedAt: true },
   });
 
-  const { discovered, updated } = diffAgainstInventory(
+  const { discovered, updated, matchedNames } = diffAgainstInventory(
     hits,
     existing.map((a) => a.name),
   );
@@ -86,7 +120,9 @@ async function applyToInventory(userId: string, hits: ScanHit[]) {
 
   let updatedCount = 0;
   for (const hit of updated) {
-    const row = byName.get(hit.service.replace(/\s+/g, '').toLowerCase());
+    // 개명한 서비스는 인벤토리에 저장된 옛 이름으로 찾아야 한다(Apple 계정 ← Apple Music).
+    const storedName = matchedNames.get(hit.service) ?? hit.service;
+    const row = byName.get(storedName.replace(/\s+/g, '').toLowerCase());
     if (!row) continue;
     const seenAt = new Date(hit.lastSeenAt);
     if (row.lastUsedAt && row.lastUsedAt >= seenAt) continue; // 더 최신 값은 보존
@@ -133,16 +169,19 @@ export async function POST(req: Request) {
 
   try {
     const settled = await Promise.allSettled(
-      CATALOG.map((entry) => latestMessageFor(token, queryFor(entry), controller.signal)),
+      CATALOG.map((entry) => latestServiceMessage(token, entry, controller.signal)),
     );
 
     const messages: MessageMeta[] = [];
     let failed = 0;
     let unauthorized = false;
+    // 후보를 훑으며 지인 메일로 판단해 제외한 건수 — 결과에 그대로 노출한다.
+    let excludedPersonal = 0;
 
     for (const s of settled) {
       if (s.status === 'fulfilled') {
-        if (s.value) messages.push(s.value);
+        if (s.value.message) messages.push(s.value.message);
+        excludedPersonal += s.value.excludedPersonal;
       } else {
         failed += 1;
         if (String(s.reason?.message ?? '').includes('401')) unauthorized = true;
@@ -162,6 +201,8 @@ export async function POST(req: Request) {
       data: {
         ...result,
         ...applied,
+        // 후보 순회에서 거른 건수 + 접기 단계에서 거른 건수. 판별 근거라 합산해 노출한다.
+        excludedPersonal: excludedPersonal + result.excludedPersonal,
         // 정직 표기용 — 조회하지 못한 서비스 수를 숨기지 않는다.
         catalogSize: CATALOG.length,
         failedQueries: failed,
