@@ -32,6 +32,9 @@ enum Category {
   social
   overseas
   domestic
+  // 분류를 알 수 없음. 소셜 연결목록처럼 서비스명만 오는 입력에서, 카탈로그에 없는 곳을
+  // 임의로 domestic/overseas로 찍지 않기 위한 값이다(추측을 사실처럼 저장하지 않는다).
+  unknown
 }
 
 enum RiskTag {
@@ -76,6 +79,9 @@ enum AccountSource {
   user_input // 사용자 직접 입력
   oauth_linked // 로그인 provider 본인 계정만(연결앱 조회 아님)
   mail_scan // 메일함 스캔으로 발견(T5.6). 활동일은 수신일 기준 "추정치" — 실 로그인일 아님
+  // 소셜 연결서비스 목록을 사용자가 가져옴. 플랫폼이 API를 열지 않아 사용자 주도 붙여넣기다.
+  // 메일 스캔과 달리 **추론이 아니라 플랫폼이 준 사실**이라, 카탈로그에 없어도 계정으로 인정한다.
+  social_link
 }
 
 // ── Models ──

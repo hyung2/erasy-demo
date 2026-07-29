@@ -23,6 +23,7 @@ function riskOf(
   category: AccountDTO['category'],
 ): AccountDTO['risk'] {
   if (breached || unusedMonths >= 24) return 'high';
+  // category가 unknown이면 해외 여부를 모르는 것이므로 위험을 올리지 않는다(추측 무감점 원칙).
   if (unusedMonths >= 12 || category === 'overseas') return 'medium';
   return 'low';
 }
