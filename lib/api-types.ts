@@ -12,9 +12,11 @@ export type ApiEnvelope<T> = {
 export type AccountDTO = {
   id: string;
   name: string;
-  category: 'social' | 'overseas' | 'domestic';
+  // unknown: 소셜 연결목록처럼 서비스명만 오는 입력에서 분류를 확정할 수 없는 경우.
+  // 임의로 domestic/overseas를 찍지 않는다.
+  category: 'social' | 'overseas' | 'domestic' | 'unknown';
   provider: 'google' | 'naver' | 'kakao' | 'apple' | 'manual';
-  source: 'seed' | 'user_input' | 'oauth_linked' | 'mail_scan';
+  source: 'seed' | 'user_input' | 'oauth_linked' | 'mail_scan' | 'social_link';
   lastUsedDays: number; // lastUsedAt에서 파생(런타임)
   breached: boolean;
   risk: 'low' | 'medium' | 'high'; // deriveRisk 파생

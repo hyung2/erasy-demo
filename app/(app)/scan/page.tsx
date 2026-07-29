@@ -7,6 +7,7 @@ import { CountUp } from '@/components/CountUp';
 import { riskLabel, riskClass, type Risk } from '@/lib/dummy-data';
 import { DISCOVERY_PATHS, linksByPath, type DiscoveryPath } from '@/lib/deep-links';
 import GmailScan from '@/components/GmailScan';
+import ConnectionImport from '@/components/ConnectionImport';
 import type { AccountDTO, LastUsedBucket, AccountUpdateRequest } from '@/lib/api-types';
 
 type Filter = 'all' | 'social' | 'overseas' | 'unused';
@@ -426,6 +427,16 @@ export default function ScanPage() {
         <GmailScan
           onApplied={() => {
             // 스캔 결과가 인벤토리·점수에 반영될 수 있으므로 둘 다 다시 읽는다.
+            void loadAccounts();
+            void refreshScore();
+          }}
+        />
+      </div>
+
+      {/* 간편가입 축 — 소셜 연결목록 가져오기. 3사 모두 API 미제공이라 사용자 주도 붙여넣기다. */}
+      <div id="connection-import">
+        <ConnectionImport
+          onApplied={() => {
             void loadAccounts();
             void refreshScore();
           }}

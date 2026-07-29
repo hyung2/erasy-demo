@@ -47,7 +47,9 @@ export type ActionType =
 // v1 AccountSignalRow에 v2 신호(discovered·accessLogObserved) 추가.
 export type ScoreRowV2 = {
   provider: 'google' | 'naver' | 'kakao' | 'apple' | 'manual';
-  category: 'social' | 'overseas' | 'domestic';
+  // unknown은 분류 미확정(소셜 연결목록 유래). 점수 판정은 'overseas'만 보므로 산식 영향은 없다
+  // — isOverseasActive가 category==='overseas' && lastUsedDays!==null일 때만 켜진다.
+  category: 'social' | 'overseas' | 'domestic' | 'unknown';
   lastUsedDays: number | null; // null = 미확인(무감점 + coverage 하락)
   twoFactorEnabled: boolean;
   passwordReused: boolean;
