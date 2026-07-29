@@ -30,10 +30,14 @@ export async function resolveSessionUser(): Promise<SessionUser> {
   if (!userId) return { ok: false, status: 401, message: '로그인이 필요합니다.' };
 
   if (!(await userExists(userId))) {
+    // 로컬에서는 어떤 id가 어긋났는지 화면까지 올린다. Next dev가 서버 console을 stdout으로
+    // 내보내지 않아 로그 기반 진단이 막히는 경우가 있어, 응답이 유일한 진단 통로가 된다.
+    const hint =
+      process.env.NODE_ENV === 'development' ? ` [userId=${userId.slice(0, 12)}…]` : '';
     return {
       ok: false,
       status: 401,
-      message: '세션 정보가 서버와 맞지 않습니다. 로그아웃 후 다시 로그인해 주세요.',
+      message: `세션 정보가 서버와 맞지 않습니다. 로그아웃 후 다시 로그인해 주세요.${hint}`,
     };
   }
   return { ok: true, userId };
