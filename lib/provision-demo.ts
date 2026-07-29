@@ -51,7 +51,8 @@ function unresolvedBreachOf(service: string) {
 }
 
 // 구독 서비스(unsubscribe 후보 태그) — 점수 무영향, FE 칩용 메타
-const SUBSCRIPTION_SERVICES = new Set(['Netflix', 'Spotify', 'Apple Music', '멜론']);
+// 'Apple 계정'은 구독이 아니라 계정이라 빠진다(이슈 #4로 'Apple Music'에서 개명).
+const SUBSCRIPTION_SERVICES = new Set(['Netflix', 'Spotify', '멜론']);
 
 // riskTags 파생(리터럴 나열 금지 — 신호에서 산출)
 function deriveRiskTags(a: DummyAccount): RiskTag[] {

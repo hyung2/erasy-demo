@@ -108,7 +108,8 @@ export const accounts: Account[] = [
   { id: 'a07', service: '카카오스토리', category: 'social', linkMethod: 'kakao-oauth', lastUsedDays: 540, unusedMonths: 18, breached: false },
   // 소셜 애플 2
   { id: 'a08', service: 'iCloud', category: 'social', linkMethod: 'apple-oauth', lastUsedDays: 2, unusedMonths: 0, breached: false, twoFactorEnabled: true },
-  { id: 'a09', service: 'Apple Music', category: 'social', linkMethod: 'apple-oauth', lastUsedDays: 60, unusedMonths: 2, breached: false },
+  // 메일 스캔이 apple.com에서 증명할 수 있는 범위는 '계정'까지다(이슈 #4). 표기를 스캔 결과와 맞춘다.
+  { id: 'a09', service: 'Apple 계정', category: 'social', linkMethod: 'apple-oauth', lastUsedDays: 60, unusedMonths: 2, breached: false },
   // 해외 6
   { id: 'a10', service: 'Netflix', category: 'overseas', linkMethod: 'google-oauth', lastUsedDays: 90, unusedMonths: 3, breached: false },
   { id: 'a11', service: 'Spotify', category: 'overseas', linkMethod: 'google-oauth', lastUsedDays: 390, unusedMonths: 13, breached: false },
@@ -265,7 +266,7 @@ export const brandMeta: Record<string, BrandMeta> = {
   카카오페이: { color: '#FFCD00', initial: '카', onLight: true },
   카카오스토리: { color: '#FFCD00', initial: '카', onLight: true },
   iCloud: { slug: 'icloud', color: '#3693F3', initial: 'I' },
-  'Apple Music': { slug: 'applemusic', color: '#FA243C', initial: 'AM' },
+  'Apple 계정': { slug: 'apple', color: '#333333', initial: 'A' },
   Netflix: { slug: 'netflix', color: '#E50914', initial: 'N' },
   Spotify: { slug: 'spotify', color: '#1ED760', initial: 'S', onLight: true },
   Amazon: { slug: 'amazon', color: '#FF9900', initial: 'A', onLight: true },

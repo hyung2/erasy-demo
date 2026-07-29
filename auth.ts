@@ -44,6 +44,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     ...authConfig.callbacks,
+    /**
+     * token.sub를 **signIn이 upsert한 User.id와 같은 값**으로 고정한다.
+     *
+     * 이게 없으면 Auth.js가 발급한 내부 id(랜덤 UUID)가 token.sub에 실릴 수 있고, 그러면
+     * 세션 userId와 DB User.id가 어긋난다. 증상은 조용하다 — 로그인은 되고 읽기는 시드 폴백이
+     * 받아주므로 화면은 멀쩡한데, 쓰기만 FK 위반으로 죽는다(2026-07-28 실측).
+     *
+     * 규약: 구글 = providerAccountId(google sub) / 자체 가입 = User.id(cuid).
+     * 최초 로그인 때만 account가 실려 오므로 그 시점에 한 번 심고 이후에는 유지한다.
+     */
+    async jwt({ token, user, account }) {
+      const domainId = account?.providerAccountId ?? user?.id;
+      if (domainId) token.sub = domainId;
+      return token;
+    },
     // 최초/재로그인 시 도메인 User upsert(google sub 기준). 자격증명·provider 토큰 미저장.
     // signIn 콜백은 실제 로그인 흐름(Node route)에서만 실행 → Edge proxy에는 영향 없음.
     async signIn({ user, account }) {

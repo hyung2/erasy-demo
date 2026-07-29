@@ -6,7 +6,14 @@
 //  - 상표를 끼워 넣은 유사 도메인(evil-netflix.com)을 서비스로 오인하지 않는다
 //  - 같은 서비스 여러 건은 최신 1건으로 접힌다
 //  - 카탈로그 밖 도메인은 "미발견"으로 집계된다(조용히 버리지 않는다)
-import { extractDomain, matchService } from '../lib/gmail-catalog';
+//  - 개인 메일 도메인(naver.com·kakao.com)에서 온 지인 메일을 가입으로 세지 않는다(이슈 #4)
+import {
+  extractAddress,
+  extractDomain,
+  isServiceSender,
+  matchSender,
+  matchService,
+} from '../lib/gmail-catalog';
 import { foldMessages, diffAgainstInventory, type MessageMeta } from '../lib/gmail-scan';
 
 let failures = 0;
@@ -81,6 +88,101 @@ const { discovered, updated } = diffAgainstInventory(result.hits, ['Netflix', '�
 check('d1 기존 계정은 갱신 대상', updated.map((h) => h.service).sort().join(',') === 'Netflix,쿠팡', updated.map((h) => h.service).join(','));
 check('d2 신규는 발견 대상', discovered.map((h) => h.service).join(',') === '토스', discovered.map((h) => h.service).join(','));
 check('d3 표기 흔들림 흡수(공백 무시)', !discovered.some((h) => h.service === '쿠팡'), '쿠팡이 신규로 잡히지 않음');
+
+// ── (e) 발신 주소 분해 ──
+const addrCases: Array<[string, string | null]> = [
+  ['네이버 <no-reply@naver.com>', 'no-reply'],
+  ['"홍길동" <hong.gildong@naver.com>', 'hong.gildong'],
+  ['naver_notice@naver.com', 'naver_notice'],
+  ['깨진주소', null],
+];
+for (const [input, expected] of addrCases) {
+  const got = extractAddress(input)?.localPart ?? null;
+  check(`e  로컬파트 파싱 "${input.slice(0, 26)}"`, got === expected, `${got} (기대 ${expected})`);
+}
+
+// ── (f) 발신 전용 주소 판별 ──
+const serviceLocalParts = ['noreply', 'no-reply', 'do-not-reply', 'notice', 'naver_notice', 'support', 'NoReply'];
+for (const lp of serviceLocalParts) {
+  check(`f1 발신 전용 인정 "${lp}"`, isServiceSender(lp), String(isServiceSender(lp)));
+}
+// 사람 이름이 발신 전용으로 오인되면 안 된다. 특히 성이 '노'인 경우(no.jaehyun)가 함정.
+const personalLocalParts = ['hong', 'hong.gildong', 'no.jaehyun', 'jiyeon_kim', 'minjun2026', ''];
+for (const lp of personalLocalParts) {
+  check(`f2 개인 주소 제외 "${lp || '(빈값)'}"`, !isServiceSender(lp), String(isServiceSender(lp)));
+}
+
+// ── (g) 개인 메일 도메인 정책 (이슈 #4) ──
+check(
+  'g1 지인 네이버 메일은 가입 아님',
+  matchSender('홍길동 <hong@naver.com>').kind === 'personal',
+  matchSender('홍길동 <hong@naver.com>').kind,
+);
+check(
+  'g2 네이버 발신 전용은 가입으로 인정',
+  matchSender('네이버 <no-reply@naver.com>').kind === 'service',
+  matchSender('네이버 <no-reply@naver.com>').kind,
+);
+check(
+  'g3 카카오 개인 메일 제외',
+  matchSender('friend@kakao.com').kind === 'personal',
+  matchSender('friend@kakao.com').kind,
+);
+check(
+  'g4 기업 전용 도메인은 로컬파트 무관',
+  matchSender('billing-team@netflix.com').kind === 'service',
+  matchSender('billing-team@netflix.com').kind,
+);
+check(
+  'g5 카탈로그 밖은 unmatched 유지',
+  matchSender('hello@unknown-shop.co.kr').kind === 'unmatched',
+  matchSender('hello@unknown-shop.co.kr').kind,
+);
+
+const mixed: MessageMeta[] = [
+  { from: '홍길동 <hong@naver.com>', receivedAt: NOW - 1 * DAY }, // 지인 — 제외
+  { from: '김지연 <jiyeon.kim@naver.com>', receivedAt: NOW - 2 * DAY }, // 지인 — 제외
+  { from: '네이버 <no-reply@naver.com>', receivedAt: NOW - 40 * DAY }, // 서비스 알림
+  { from: '카카오 <friend@kakao.com>', receivedAt: NOW - 3 * DAY }, // 지인 — 제외
+  { from: 'Apple <no_reply@email.apple.com>', receivedAt: NOW - 7 * DAY },
+];
+const mixedResult = foldMessages(mixed, NOW);
+check(
+  'g6 지인 메일 제외 건수',
+  mixedResult.excludedPersonal === 3,
+  `${mixedResult.excludedPersonal}건 (기대 3)`,
+);
+check(
+  'g7 네이버는 발신 전용 메일로만 잡힘',
+  mixedResult.hits.find((h) => h.service === '네이버')?.lastSeenDays === 40,
+  `네이버 ${mixedResult.hits.find((h) => h.service === '네이버')?.lastSeenDays}일 (기대 40)`,
+);
+check(
+  'g8 카카오톡은 발견되지 않음',
+  !mixedResult.hits.some((h) => h.service === '카카오톡'),
+  mixedResult.hits.map((h) => h.service).join(','),
+);
+check(
+  'g9 Apple은 계정 단위로 표기',
+  mixedResult.hits.some((h) => h.service === 'Apple 계정'),
+  mixedResult.hits.map((h) => h.service).join(','),
+);
+
+// ── (h) 개명 서비스 alias 대조 ──
+const appleDiff = diffAgainstInventory(
+  mixedResult.hits.filter((h) => h.service === 'Apple 계정'),
+  ['Apple Music', '넷플릭스'],
+);
+check(
+  'h1 옛 표기는 신규 계정이 아님',
+  appleDiff.discovered.length === 0 && appleDiff.updated.length === 1,
+  `신규 ${appleDiff.discovered.length} · 갱신 ${appleDiff.updated.length}`,
+);
+check(
+  'h2 인벤토리 저장명으로 되짚음',
+  appleDiff.matchedNames.get('Apple 계정') === 'Apple Music',
+  String(appleDiff.matchedNames.get('Apple 계정')),
+);
 
 console.log(failures === 0 ? '\ngmail-scan: 전 항목 PASS' : `\ngmail-scan: ${failures}건 FAIL`);
 process.exit(failures === 0 ? 0 : 1);

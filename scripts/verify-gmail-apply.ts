@@ -6,6 +6,7 @@
 //   (b) 기존 계정 → 메일 추정치가 더 최신일 때만 활동일 갱신
 //   (c) 더 오래된 추정치는 기존 값을 덮지 않음 (실측·자가신고 값 보호)
 //   (d) 재스캔 멱등 — 같은 결과로 다시 돌려도 계정이 중복 생성되지 않음
+//   (e) 개명 서비스(Apple 계정 ← Apple Music) — 옛 표기 계정을 중복 생성하지 않고 갱신
 // 임시 사용자는 마지막에 반드시 정리(prod와 동일 DB 공유).
 import { prisma } from '../lib/prisma';
 import { diffAgainstInventory, type ScanHit } from '../lib/gmail-scan';
@@ -26,13 +27,17 @@ async function apply(userId: string, hits: ScanHit[]) {
     where: { userId },
     select: { id: true, name: true, lastUsedAt: true },
   });
-  const { discovered, updated } = diffAgainstInventory(hits, existing.map((a) => a.name));
+  const { discovered, updated, matchedNames } = diffAgainstInventory(
+    hits,
+    existing.map((a) => a.name),
+  );
   const key = (s: string) => s.replace(/\s+/g, '').toLowerCase();
   const byName = new Map(existing.map((a) => [key(a.name), a]));
 
   let updatedCount = 0;
   for (const hit of updated) {
-    const row = byName.get(key(hit.service));
+    // 개명 서비스는 인벤토리에 저장된 옛 이름으로 되짚는다.
+    const row = byName.get(key(matchedNames.get(hit.service) ?? hit.service));
     if (!row) continue;
     const seenAt = new Date(hit.lastSeenAt);
     if (row.lastUsedAt && row.lastUsedAt >= seenAt) continue;
@@ -137,6 +142,25 @@ async function main() {
   const total = await prisma.account.count({ where: { userId: TEST_USER_ID } });
   check('d1 재스캔 시 신규 0', r2.discoveredCount === 0, `${r2.discoveredCount}건`);
   check('d2 계정 중복 없음', total === 3, `${total}건 (기대 3)`);
+
+  // (e) 개명 서비스 — 인벤토리에는 옛 표기(Apple Music)가 있고 스캔은 새 표기(Apple 계정)로 온다.
+  await prisma.account.create({
+    data: {
+      userId: TEST_USER_ID,
+      name: 'Apple Music',
+      provider: 'manual',
+      category: 'overseas',
+      source: 'seed',
+      lastUsedAt: new Date(NOW - 500 * DAY),
+    },
+  });
+  const r3 = await apply(TEST_USER_ID, [hit('Apple 계정', 20, 'overseas')]);
+  const appleRows = await prisma.account.count({
+    where: { userId: TEST_USER_ID, name: { contains: 'Apple' } },
+  });
+  check('e1 옛 표기 계정은 신규 아님', r3.discoveredCount === 0, `${r3.discoveredCount}건 (기대 0)`);
+  check('e2 옛 표기 계정 활동일 갱신', r3.updatedCount === 1, `${r3.updatedCount}건 (기대 1)`);
+  check('e3 Apple 계정 중복 없음', appleRows === 1, `${appleRows}건 (기대 1)`);
 
   console.log(failures === 0 ? '\n결과: 전 항목 PASS' : `\n결과: ${failures}건 FAIL`);
 }
