@@ -10,8 +10,8 @@
 //  - gmail.metadata scope는 검색(q) 자체가 막혀 있어 readonly가 불가피하다 — 발표에서 선제 언급 대상.
 export const dynamic = 'force-dynamic';
 
-import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { resolveSessionUser } from '@/lib/session-user';
 import {
   CATALOG,
   candidateCountFor,
@@ -149,8 +149,9 @@ async function applyToInventory(userId: string, hits: ScanHit[]) {
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return fail('로그인이 필요합니다.', 401);
+  // 세션만 보고 진행하면 User 행이 없을 때 insert가 FK에 걸려 502로 끝난다 — 재로그인을 안내한다.
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser.ok) return fail(sessionUser.message, sessionUser.status);
 
   let token: string;
   try {
@@ -194,7 +195,7 @@ export async function POST(req: Request) {
     }
 
     const result = foldMessages(messages, Date.now());
-    const applied = await applyToInventory(session.user.id, result.hits);
+    const applied = await applyToInventory(sessionUser.userId, result.hits);
 
     return Response.json({
       ok: true,

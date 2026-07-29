@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic';
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { resolveSessionUser } from '@/lib/session-user';
 import type { ApiEnvelope, AccountDTO, AccountCreateRequest } from '@/lib/api-types';
 import { accounts as seed, deriveRisk, type LinkMethod } from '@/lib/dummy-data';
 
@@ -97,11 +98,13 @@ export async function GET() {
 // POST /api/accounts — 몰랐던 계정 직접 추가(T5.4 F2). 서비스명만 입력, 나머지 파생.
 //  source=user_input·discovered=true·provider=manual·lastUsedAt=null(미상). 점수 재계산은 GET /api/score.
 export async function POST(request: Request) {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
-    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  // GET은 User 부재 시 시드로 폴백해 화면이 멀쩡해 보인다. 그 상태로 여기 들어오면
+  // insert가 FK에 걸려 503으로만 끝나므로, 쓰기 전에 User 실재를 확인하고 재로그인을 안내한다.
+  const sessionUser = await resolveSessionUser();
+  if (!sessionUser.ok) {
+    return Response.json({ error: sessionUser.message }, { status: sessionUser.status });
   }
+  const userId = sessionUser.userId;
 
   let body: AccountCreateRequest;
   try {
