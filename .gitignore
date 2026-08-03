@@ -25,7 +25,11 @@
 *.pem
 
 # local backups (never publish to public repo)
+# `*.bak`만 두면 `page.tsx.bak-pre-t54` 같은 접미사 백업이 안 걸려 untracked로 쌓인다.
+# 실제로 50개까지 누적됐다(2026-08-03 정리). 접미사형과 보관 폴더를 함께 제외한다.
 *.bak
+*.bak-*
+/_bak/
 
 # debug
 npm-debug.log*
