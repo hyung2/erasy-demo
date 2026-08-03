@@ -1432,6 +1432,22 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 }
 .auth-disclaimer { color: var(--text-mute); font-size: 0.8125rem; text-align: center; line-height: 1.7; }
 
+/* 낮은 뷰포트 대응 — 첫 화면에서 가입·로그인 버튼이 접히지 않게 수직 리듬을 압축한다.
+   왜 필요한가: 세로 569px에서 가입 탭 제출 버튼이 top 543(높이 52)에 놓여 27px 잘렸다.
+   작은 창으로 여는 심사위원의 첫 화면에 기본 동선 CTA가 안 보이는 상태였다(2026-08-03 실측).
+   구글 로그인이 Testing 모드라 이메일 가입이 기본 동선이므로, 이 버튼의 가시성이 우선순위다.
+   손대는 값은 여백·자간뿐 — 요소를 숨기거나 순서를 바꾸지 않는다(정보 손실 없이 접힘만 해소). */
+@media (max-height: 700px) {
+  .erasy-auth { padding: 16px; }
+  .auth-box { gap: 12px; }
+  .auth-brand .logo { font-size: 1.375rem; }
+  .auth-head { gap: 4px; }
+  .auth-head h1 { font-size: 1.25rem; }
+  .auth-card { padding: 18px; gap: 12px; }
+  .auth-form { gap: 10px; }
+  .auth-field { gap: 4px; }
+}
+
 /* 계정 선택 목록(모달 내) */
 .picker-list { display: flex; flex-direction: column; margin-top: 4px; }
 .picker-item {
