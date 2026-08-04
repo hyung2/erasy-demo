@@ -5,7 +5,12 @@
 //
 // 추정의 성격(화면 라벨과 일치시킬 것): 수신일 = 활동 **추정치**. 실제 로그인일이 아니며
 // 광고 메일만 받아도 최근값이 된다. 이 한계를 감추면 점수 신뢰 전체가 무너진다.
-import { aliasesFor, matchSender, type CatalogEntry } from './gmail-catalog';
+import {
+  aliasesFor,
+  matchSender,
+  resolveOpenSender,
+  type CatalogEntry,
+} from './gmail-catalog';
 
 export type MessageMeta = {
   /** From 헤더 원문. */
@@ -16,7 +21,9 @@ export type MessageMeta = {
 
 export type ScanHit = {
   service: string;
-  category: CatalogEntry['category'];
+  // 개방 모드(A1)에서 카탈로그 밖 서비스는 분류를 모른다 → 'unknown'. domestic/overseas를
+  // 임의로 찍지 않는다(connection-import와 동일 정책). Prisma Category에 이미 있는 값이다.
+  category: CatalogEntry['category'] | 'unknown';
   domain: string;
   /** 가장 최근 수신 시각(epoch ms). */
   lastSeenAt: number;
@@ -89,6 +96,68 @@ export function foldMessages(messages: MessageMeta[], now: number): ScanResult {
 
 function daysBetween(then: number, now: number): number {
   return Math.max(0, Math.floor((now - then) / 86_400_000));
+}
+
+/**
+ * 개방 모드 접기(A1) — 가입·인증 문구로 걸린 메일을 서비스별 최신 활동으로 접는다.
+ *
+ * `foldMessages`와 다른 점: **카탈로그 밖 발신 도메인을 버리지 않는다.** 카탈로그에 있으면
+ * 표시명·분류를 사전에서 가져오고, 없으면 등록 가능 도메인을 그대로 후보명으로 둔다
+ * (이름을 지어내지 않는다 — 사용자가 화면에서 고친다).
+ *
+ * `unmatchedDomains`는 이 모드에서 의미가 없다(버리는 도메인이 없다). 대신 카탈로그로
+ * 이름을 확정하지 못한 건수를 `unnamed`로 돌려준다 — 사용자 확인이 필요한 양이다.
+ */
+export function foldOpenMessages(
+  messages: MessageMeta[],
+  now: number,
+): ScanResult & { unnamed: number } {
+  const byService = new Map<string, ScanHit>();
+  let excludedPersonal = 0;
+  let unnamed = 0;
+
+  for (const msg of messages) {
+    const v = resolveOpenSender(msg.from);
+    if (v.kind === 'invalid') continue;
+    if (v.kind === 'personal') {
+      excludedPersonal += 1;
+      continue;
+    }
+
+    const service = v.kind === 'known' ? v.entry.service : v.name;
+    // 분류를 모르는 서비스에 domestic/overseas를 임의로 찍지 않는다(connection-import와 동일 정책).
+    const category: ScanHit['category'] = v.kind === 'known' ? v.entry.category : 'unknown';
+
+    const existing = byService.get(service);
+    if (!existing) {
+      if (v.kind === 'discovered') unnamed += 1;
+      byService.set(service, {
+        service,
+        category,
+        domain: v.domain,
+        lastSeenAt: msg.receivedAt,
+        lastSeenDays: daysBetween(msg.receivedAt, now),
+        messageCount: 1,
+      });
+      continue;
+    }
+
+    existing.messageCount += 1;
+    if (msg.receivedAt > existing.lastSeenAt) {
+      existing.lastSeenAt = msg.receivedAt;
+      existing.lastSeenDays = daysBetween(msg.receivedAt, now);
+      existing.domain = v.domain;
+    }
+  }
+
+  const hits = [...byService.values()].sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+  return {
+    hits,
+    unmatchedDomains: 0, // 개방 모드에서는 버리는 도메인이 없다
+    excludedPersonal,
+    scanned: messages.length,
+    unnamed,
+  };
 }
 
 /**

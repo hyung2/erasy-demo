@@ -15,8 +15,17 @@ type ScanData = {
   /** 개인 메일로 판단해 제외한 건수 — 판별 근거라 화면에도 드러낸다. */
   excludedPersonal: number;
   scanned: number;
-  catalogSize: number;
   failedQueries: number;
+  // ── 개방 모드(A1) ──
+  /** 사용한 가입·인증 문구 개수. */
+  phraseCount: number;
+  /** 질의에 걸린 메일 수. */
+  listed: number;
+  /** 상한에서 잘렸는가 — 잘랐다는 사실을 숨기지 않는다. */
+  truncated: boolean;
+  maxMessages: number;
+  /** 카탈로그로 이름을 확정하지 못해 도메인으로 담은 건수(사용자 확인 필요량). */
+  unnamed: number;
   /** 인벤토리에 새로 추가된 계정 수. */
   discoveredCount: number;
   /** 활동일이 갱신된 기존 계정 수. */
@@ -136,9 +145,11 @@ export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
       </div>
 
       <p className="score-sub">
-        받은 메일의 발신자만 확인해 가입한 서비스를 찾습니다. 메일 본문은 읽지 않고, 발신자와 날짜만
-        사용합니다. 권한은 이 조회에만 쓰이고 저장하지 않습니다. 네이버·카카오처럼 개인 메일 주소로도
-        쓰이는 도메인은 서비스 알림 주소에서 온 메일만 셉니다.
+        가입·인증 메일을 <strong>구글 검색에 맡겨</strong> 골라내고, 그렇게 걸린 메일의{' '}
+        <strong>발신자와 날짜만</strong> 받아 서비스를 되짚습니다. 검색은 구글 서버에서 이뤄지므로{' '}
+        <strong>메일 내용은 우리 서버로 오지 않고 저장되지도 않습니다</strong>. 권한도 이 조회에만
+        쓰이고 보관하지 않습니다. 네이버·카카오처럼 개인 메일 주소로도 쓰이는 도메인은 서비스 알림
+        주소에서 온 메일만 셉니다.
       </p>
 
       <button type="button" className="btn btn-primary" onClick={runScan} disabled={pending}>
@@ -174,11 +185,18 @@ export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
             광고 메일만 받아도 최근으로 잡힙니다.
           </p>
           <p className="advice">
-            주요 서비스 {data.catalogSize}곳을 대조했습니다. 목록에 없는 서비스는 이 방법으로 찾지
-            못합니다 — 못 찾은 것이지 없는 것이 아닙니다
-            {data.unmatchedDomains > 0 && `(미확인 발신 도메인 ${data.unmatchedDomains}곳)`}.
+            가입·인증 메일 문구 {data.phraseCount}가지로 찾아 <strong>발신 주소로 서비스를 되짚었습니다</strong>
+            (메일 {data.listed}건 확인). 정해진 목록에 없는 서비스도 담기지만, 그 문구가 없는
+            가입 메일은 여전히 찾지 못합니다 — 못 찾은 것이지 없는 것이 아닙니다.
+            {data.truncated && ` 한 번에 ${data.maxMessages}건까지만 훑어 그 뒤는 빠졌습니다 — 다시 스캔하면 이어서 찾습니다.`}
             {data.failedQueries > 0 && ` 조회 실패 ${data.failedQueries}건은 결과에서 빠졌습니다.`}
           </p>
+          {data.unnamed > 0 && (
+            <p className="advice">
+              {data.unnamed}곳은 서비스 이름을 확정하지 못해 <strong>보낸 도메인 그대로</strong> 담았습니다.
+              이름을 지어내지 않습니다 — 목록에서 직접 고쳐 주세요.
+            </p>
+          )}
           {data.excludedPersonal > 0 && (
             <p className="advice">
               개인이 보낸 메일 {data.excludedPersonal}건은 가입 근거에서 제외했습니다. 네이버·카카오는

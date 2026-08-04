@@ -217,6 +217,94 @@ export type SenderVerdict =
  * From 헤더 한 줄을 판정한다. 도메인 매칭에 **발신자 정책**을 얹은 것이 `matchService`와의 차이다.
  * 오탐(지인 메일 → 가입)을 막는 지점이 여기이며, 결과의 `personal`은 버리지 않고 카운트로 노출한다.
  */
+/**
+ * 개인 메일함으로 널리 쓰이는 도메인. 카탈로그 밖 도메인을 서비스로 인정하는 개방 모드에서
+ * **여기 있는 도메인만 발신 전용 주소 조건을 요구**한다(지인 메일을 가입으로 세지 않기 위해).
+ * 그 밖의 낯선 도메인은 가입·인증 문구로 걸린 메일의 발신자이므로 서비스로 본다.
+ */
+const WEBMAIL_DOMAINS = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'naver.com',
+  'kakao.com',
+  'daum.net',
+  'hanmail.net',
+  'nate.com',
+  'hotmail.com',
+  'outlook.com',
+  'outlook.kr',
+  'live.com',
+  'msn.com',
+  'yahoo.com',
+  'yahoo.co.jp',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'proton.me',
+  'protonmail.com',
+  'hanmir.com',
+  'korea.com',
+  'empas.com',
+]);
+
+/** `co.kr`처럼 2단계 국가 TLD — 등록 가능 도메인을 자를 때 한 칸 더 남긴다. */
+const MULTI_LEVEL_TLDS = new Set([
+  'co.kr', 'or.kr', 'ne.kr', 'go.kr', 're.kr', 'pe.kr', 'ac.kr',
+  'co.jp', 'ne.jp', 'or.jp', 'co.uk', 'org.uk', 'ac.uk',
+  'com.au', 'com.br', 'com.cn', 'com.tw', 'com.hk', 'com.sg',
+]);
+
+/**
+ * 발신 도메인 → 등록 가능 도메인. `mailer.notice.ridibooks.com` → `ridibooks.com`.
+ * 이걸 안 하면 같은 서비스가 서브도메인마다 다른 계정으로 쌓인다.
+ */
+export function registrableDomain(domain: string): string {
+  const parts = domain.toLowerCase().replace(/\.$/, '').split('.');
+  if (parts.length <= 2) return parts.join('.');
+  const lastTwo = parts.slice(-2).join('.');
+  if (MULTI_LEVEL_TLDS.has(lastTwo) && parts.length >= 3) return parts.slice(-3).join('.');
+  return lastTwo;
+}
+
+/** 개방 모드 판정 결과. 카탈로그에 없으면 도메인 자체를 서비스명 후보로 돌려준다. */
+export type OpenSenderVerdict =
+  | { kind: 'invalid' }
+  | { kind: 'personal'; domain: string }
+  /** 카탈로그 적중 — 표시명·분류를 사전에서 가져온다. */
+  | { kind: 'known'; entry: CatalogEntry; domain: string }
+  /** 카탈로그 밖 — 이름을 지어내지 않고 등록 가능 도메인을 그대로 후보명으로 쓴다. */
+  | { kind: 'discovered'; name: string; domain: string };
+
+/**
+ * 가입·인증 문구로 걸린 메일의 발신자를 서비스로 환원한다(A1 개방 모드).
+ *
+ * `matchSender`와 다른 점: 카탈로그에 없는 도메인을 버리지 않는다. 카탈로그는 발견의 필터가
+ * 아니라 **표시명·분류 사전**으로 역할이 바뀐다 — `lib/connection-import.ts`가 이미 쓰는 정책이며,
+ * 이걸로 두 발견 경로의 정책이 통일된다. 카탈로그 의존이 남아 있는 동안 재현율 상한이
+ * 목록 크기(36)에 하드코딩돼 있었다(2026-08-04 실측: 실계정에서 6곳만 발견, 질의 9건 실패).
+ *
+ * 정밀도 방어는 그대로 유지한다 — 개인 메일 도메인은 발신 전용 로컬파트일 때만 인정한다.
+ */
+export function resolveOpenSender(fromHeader: string): OpenSenderVerdict {
+  const addr = extractAddress(fromHeader);
+  if (!addr) return { kind: 'invalid' };
+
+  const entry = matchService(addr.domain);
+  if (entry) {
+    if (entry.senderPolicy === 'service-only' && !isServiceSender(addr.localPart)) {
+      return { kind: 'personal', domain: addr.domain };
+    }
+    return { kind: 'known', entry, domain: addr.domain };
+  }
+
+  const registrable = registrableDomain(addr.domain);
+  // 카탈로그 밖이지만 개인 메일함 도메인이면 발신 전용 주소만 서비스로 인정한다.
+  if (WEBMAIL_DOMAINS.has(registrable) && !isServiceSender(addr.localPart)) {
+    return { kind: 'personal', domain: addr.domain };
+  }
+  return { kind: 'discovered', name: registrable, domain: addr.domain };
+}
+
 export function matchSender(fromHeader: string): SenderVerdict {
   const addr = extractAddress(fromHeader);
   if (!addr) return { kind: 'invalid' };
@@ -242,6 +330,36 @@ export function aliasesFor(service: string): string[] {
  * 목록에 없는 주소(`naver_notice@…` 같은 변종)를 통째로 놓쳐 **미발견**이 된다.
  * 넓게 받아 서버에서 거르는 쪽이 안전하다 — 판정의 SSOT는 `matchSender`다.
  */
+/**
+ * 개방 모드 질의어 — "아는 서비스의 도메인"이 아니라 **가입·인증 메일의 문구**로 찾는다.
+ *
+ * 검색은 구글 서버가 수행하고 우리가 받는 것은 지금과 동일하게 From·Date 헤더뿐이다.
+ * scope도 `gmail.readonly` 그대로이므로 추가 권한이 없다.
+ *
+ * 문구 선정 원칙: 가입 시점에만 오는 말을 고른다. `인증번호`는 은행·2FA·주문확인 등
+ * 가입과 무관한 메일에 광범위하게 쓰여 제외했다(오탐이 미발견보다 낫다는 뜻이 아니라,
+ * 발신 도메인 집계 단계에서 걸러낼 수 없는 종류의 잡음이기 때문이다). 필요하면 여기서 조정한다.
+ */
+export const OPEN_SCAN_PHRASES = [
+  '회원가입',
+  '가입이 완료',
+  '가입을 환영',
+  '가입해 주셔서',
+  '이메일 인증',
+  '이메일 주소 인증',
+  '가입 확인',
+  'welcome to',
+  'verify your email',
+  'confirm your email',
+  'complete your registration',
+  'activate your account',
+] as const;
+
+/** 개방 모드 Gmail 질의문. lookback은 호출부가 붙인다. */
+export function openScanQuery(): string {
+  return OPEN_SCAN_PHRASES.map((p) => `"${p}"`).join(' OR ');
+}
+
 export function queryFor(entry: CatalogEntry): string {
   return entry.domains.map((d) => `from:${d}`).join(' OR ');
 }

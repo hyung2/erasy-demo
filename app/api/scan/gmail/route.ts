@@ -12,19 +12,17 @@ export const dynamic = 'force-dynamic';
 
 import { prisma } from '@/lib/prisma';
 import { resolveSessionUser } from '@/lib/session-user';
-import {
-  CATALOG,
-  candidateCountFor,
-  matchSender,
-  queryFor,
-  type CatalogEntry,
-} from '@/lib/gmail-catalog';
-import { foldMessages, diffAgainstInventory, type MessageMeta, type ScanHit } from '@/lib/gmail-scan';
+import { openScanQuery, OPEN_SCAN_PHRASES } from '@/lib/gmail-catalog';
+import { foldOpenMessages, diffAgainstInventory, type MessageMeta, type ScanHit } from '@/lib/gmail-scan';
 
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
-// 서비스별로 최신 1건만 필요하다. 메일함 전체를 훑지 않는 것이 속도와 최소수집 양쪽에 맞는다.
-// 예외: 개인 메일 도메인(naver.com·kakao.com)은 최신 1건이 지인 메일일 수 있어 여러 건을 훑는다.
+// 조회 창은 3년 유지. 5년으로 넓히면 휴면(730일+) 계정 비중이 급증해 점수가 과하게 내려가고
+// 기존 측정과 비교할 수 없게 된다(2026-08-04 레드팀 조건).
 const LOOKBACK = 'newer_than:3y';
+// 한 번에 훑을 메시지 상한. 넘치면 잘랐다는 사실을 결과에 그대로 노출한다(조용한 절단 금지).
+const MAX_MESSAGES = 180;
+// metadata 동시 호출 수 — Gmail rate limit과 25초 예산 사이의 타협.
+const CONCURRENCY = 10;
 
 type ListResponse = { messages?: Array<{ id: string }> };
 type MetaResponse = {
@@ -58,41 +56,53 @@ async function messageMeta(
 }
 
 /**
- * 서비스 한 곳의 "가장 최근 서비스 알림" 1건을 찾는다.
+ * 가입·인증 문구로 걸린 메시지 id를 모은다(A1 개방 모드).
  *
- * 질의는 도메인 전체로 던지고 발신자 판정은 여기서 한다(이슈 #4). 개인 메일 도메인은
- * 최신순 후보를 훑다가 **처음 만나는 서비스 알림**을 채택하고, 그 앞에서 걸러낸 지인 메일 수를
- * 함께 돌려준다. 질의 자체를 발신 전용 주소로 좁히지 않는 이유는 목록에 없는 변종 주소를
- * 통째로 놓쳐 미발견이 되기 때문이다.
+ * 이전 구조는 카탈로그 36개 서비스마다 `from:도메인` 질의를 하나씩 던졌다. 그래서 찾을 수 있는
+ * 서비스의 상한이 목록 크기에 하드코딩돼 있었고, 실계정 측정에서 6곳만 발견되고 질의 9건이
+ * 실패했다(2026-08-04). 이제 질의를 1회로 줄이고 판정을 발신 도메인 집계로 옮긴다.
  */
-async function latestServiceMessage(
+async function listSignupMessages(
   token: string,
-  entry: CatalogEntry,
   signal: AbortSignal,
-): Promise<{ message: MessageMeta | null; excludedPersonal: number }> {
-  const limit = candidateCountFor(entry);
-  const query = queryFor(entry);
-  const listUrl = `${GMAIL}/messages?maxResults=${limit}&q=${encodeURIComponent(`(${query}) ${LOOKBACK}`)}`;
-  const listRes = await fetch(listUrl, {
-    headers: { authorization: `Bearer ${token}` },
-    signal,
-  });
-  if (!listRes.ok) throw new Error(`list ${listRes.status}`);
+): Promise<{ ids: string[]; truncated: boolean }> {
+  const q = `(${openScanQuery()}) ${LOOKBACK}`;
+  const listUrl = `${GMAIL}/messages?maxResults=${MAX_MESSAGES}&q=${encodeURIComponent(q)}`;
+  const res = await fetch(listUrl, { headers: { authorization: `Bearer ${token}` }, signal });
+  if (!res.ok) throw new Error(`list ${res.status}`);
 
-  const list = (await listRes.json()) as ListResponse;
-  const ids = (list.messages ?? []).map((m) => m.id);
+  const body = (await res.json()) as ListResponse & { nextPageToken?: string };
+  const ids = (body.messages ?? []).map((m) => m.id);
+  // nextPageToken이 있으면 더 있다는 뜻 — 상한에서 잘랐다는 사실을 숨기지 않는다.
+  return { ids, truncated: Boolean(body.nextPageToken) };
+}
 
-  let excludedPersonal = 0;
-  for (const id of ids) {
-    const meta = await messageMeta(token, id, signal);
-    if (!meta) continue;
+/** 메시지 메타데이터를 제한 동시성으로 모은다. 실패 건수는 그대로 돌려준다. */
+async function collectMeta(
+  token: string,
+  ids: string[],
+  signal: AbortSignal,
+): Promise<{ messages: MessageMeta[]; failed: number; unauthorized: boolean }> {
+  const messages: MessageMeta[] = [];
+  let failed = 0;
+  let unauthorized = false;
+  let cursor = 0;
 
-    const verdict = matchSender(meta.from);
-    if (verdict.kind === 'service') return { message: meta, excludedPersonal };
-    if (verdict.kind === 'personal') excludedPersonal += 1;
-    // unmatched·invalid: 도메인으로 질의했는데 매칭이 안 된 예외 케이스 — 조용히 넘긴다.
+  async function worker() {
+    while (cursor < ids.length) {
+      const i = cursor++;
+      try {
+        const m = await messageMeta(token, ids[i], signal);
+        if (m) messages.push(m);
+      } catch (e) {
+        failed += 1;
+        if (String((e as Error).message).includes('401')) unauthorized = true;
+      }
+    }
   }
-  return { message: null, excludedPersonal };
+
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, ids.length) }, worker));
+  return { messages, failed, unauthorized };
 }
 
 /**
@@ -169,32 +179,15 @@ export async function POST(req: Request) {
   const timer = setTimeout(() => controller.abort(), 25_000);
 
   try {
-    const settled = await Promise.allSettled(
-      CATALOG.map((entry) => latestServiceMessage(token, entry, controller.signal)),
-    );
-
-    const messages: MessageMeta[] = [];
-    let failed = 0;
-    let unauthorized = false;
-    // 후보를 훑으며 지인 메일로 판단해 제외한 건수 — 결과에 그대로 노출한다.
-    let excludedPersonal = 0;
-
-    for (const s of settled) {
-      if (s.status === 'fulfilled') {
-        if (s.value.message) messages.push(s.value.message);
-        excludedPersonal += s.value.excludedPersonal;
-      } else {
-        failed += 1;
-        if (String(s.reason?.message ?? '').includes('401')) unauthorized = true;
-      }
-    }
+    const { ids, truncated } = await listSignupMessages(token, controller.signal);
+    const { messages, failed, unauthorized } = await collectMeta(token, ids, controller.signal);
 
     // 전량 실패 + 401 = 토큰이 죽었거나 scope 미승인. 빈 결과를 "깨끗함"으로 오인시키지 않는다.
     if (unauthorized && messages.length === 0) {
       return fail('메일 접근 권한이 만료됐습니다. 다시 시도해 주세요.', 401);
     }
 
-    const result = foldMessages(messages, Date.now());
+    const result = foldOpenMessages(messages, Date.now());
     const applied = await applyToInventory(sessionUser.userId, result.hits);
 
     return Response.json({
@@ -202,10 +195,11 @@ export async function POST(req: Request) {
       data: {
         ...result,
         ...applied,
-        // 후보 순회에서 거른 건수 + 접기 단계에서 거른 건수. 판별 근거라 합산해 노출한다.
-        excludedPersonal: excludedPersonal + result.excludedPersonal,
-        // 정직 표기용 — 조회하지 못한 서비스 수를 숨기지 않는다.
-        catalogSize: CATALOG.length,
+        // 정직 표기용 — 무엇을 몇 건 훑었고 무엇을 못 했는지 숨기지 않는다.
+        phraseCount: OPEN_SCAN_PHRASES.length,
+        listed: ids.length,
+        truncated, // 상한(MAX_MESSAGES)에서 잘렸는가
+        maxMessages: MAX_MESSAGES,
         failedQueries: failed,
       },
     });
