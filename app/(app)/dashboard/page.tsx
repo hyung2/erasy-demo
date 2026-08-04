@@ -7,25 +7,49 @@ import { useDemo } from '@/components/DemoStateClient';
 import { CountUp } from '@/components/CountUp';
 import { ScoreBenchmarkChart } from '@/components/ScoreBenchmarkChart';
 import { demo } from '@/content/copy';
-import type { ScoreDTO } from '@/lib/api-types';
+import type { ScoreDTO, AccountDTO } from '@/lib/api-types';
 import type { AxisKey, ActionType } from '@/lib/score-v2';
-import { projectRecovery } from '@/lib/score-projection';
 import {
-  accounts,
   deriveGrade,
   targetScore,
-  breachedCount,
-  cleanupCount,
-  overseasCount,
-  socialCount,
-  unusedCount,
   activityFeed,
   peerMonthlyAvg,
-  highRiskCount,
   type FeedItem,
 } from '@/lib/dummy-data';
 
-const pct = (n: number) => Math.round((n / accounts.length) * 100);
+// 요약·분포 수치는 **이 사용자의 실제 인벤토리**(/api/accounts)에서 파생한다.
+// 이전에는 dummy-data의 모듈 상수(accounts.length·breachedCount·overseasCount…)를 그대로 렌더해
+// 계정이 30개여도 화면은 늘 24라고 말했다. 점수만 실값이고 나머지가 시드라 scan 화면(27·30)과
+// 숫자가 어긋났다(2026-08-04 실측). 로딩 전에는 시드 숫자로 때우지 않고 —로 비워 둔다.
+const DORMANT_DAYS = 365; // "미사용 12개월+" 기준
+const CLEANUP_DAYS = 180; // 정리 대기 = 6개월 이상 방치된 소셜 연결(deriveCleanupCandidates 규칙 승계)
+const CLEANUP_MAX = 7;
+
+type Inventory = {
+  total: number;
+  breached: number;
+  overseas: number;
+  social: number;
+  unused: number;
+  cleanup: number;
+  highRisk: number;
+};
+
+function summarize(list: AccountDTO[]): Inventory {
+  const isSocialLink = (a: AccountDTO) => a.provider !== 'manual';
+  return {
+    total: list.length,
+    breached: list.filter((a) => a.breached).length,
+    overseas: list.filter((a) => a.category === 'overseas').length,
+    social: list.filter((a) => a.category === 'social').length,
+    unused: list.filter((a) => a.lastUsedDays >= DORMANT_DAYS).length,
+    cleanup: Math.min(
+      CLEANUP_MAX,
+      list.filter((a) => isSocialLink(a) && a.lastUsedDays >= CLEANUP_DAYS).length,
+    ),
+    highRisk: list.filter((a) => a.risk === 'high').length,
+  };
+}
 
 const dotClass: Record<FeedItem['tone'], string> = {
   error: 'is-danger',
@@ -74,6 +98,8 @@ export default function DashboardPage() {
   // 안전도 점수 v2 DTO — 종합·등급·델타·4축·최약축·기대상승을 API 실값으로 소비(하드코딩 금지).
   const [dto, setDto] = useState<ScoreDTO | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  // 인벤토리 실값 — 요약 카드·위험 분포의 근거. null이면 아직 모르는 상태이지 0이 아니다.
+  const [inv, setInv] = useState<Inventory | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -93,12 +119,34 @@ export default function DashboardPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/accounts')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((body: { data: AccountDTO[] }) => {
+        // 실패해도 시드 상수로 되돌아가지 않는다 — 그 조용한 폴백이 숫자 불일치의 원인이었다.
+        if (alive) setInv(summarize(body.data ?? []));
+      })
+      .catch(() => {
+        if (alive) setInv(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /** 인벤토리 미확보 시 —. 0으로 때우면 "계정 없음"이라는 거짓 사실이 된다. */
+  const n = (v: number | undefined) => (inv === null || v === undefined ? null : v);
+  const pct = (v: number) => (inv === null || inv.total === 0 ? 0 : Math.round((v / inv.total) * 100));
+
   const apiScore = dto?.score ?? null;
   const apiGrade = dto?.grade ?? null;
 
   // 정리 완료(데모) 시 회복 투영 도달점(계단 최종 93 — slide·result와 3곳 통일), 아니면 API 종합.
   //   93은 하드코딩 아닌 엔진 회복 궤적(projectRecovery)에서 파생. 목표선 90은 별도(초과 달성).
-  const recoveredScore = useMemo(() => projectRecovery().afterComposite ?? targetScore, []);
+  // 정리 완료 상태의 도달점도 **이 사용자 투영**(API recovery)에서 온다. 시드 투영을 쓰면
+  // 결과 화면과 대시보드가 다른 도달점을 말한다(결과 화면은 08-04에 실데이터로 전환됨).
+  const recoveredScore = dto?.recovery?.afterComposite ?? targetScore;
   const score = cleaned ? recoveredScore : (apiScore ?? 0);
   const grade = cleaned ? deriveGrade(score) : (apiGrade ?? '위험');
   const delta = cleaned ? recoveredScore - (apiScore ?? 0) : (dto?.delta ?? 0);
@@ -147,9 +195,9 @@ export default function DashboardPage() {
   const topPct = Math.min(99, Math.max(1, Math.round(50 - ((score - peerLast) / 22) * 34)));
 
   const bars = [
-    { key: '소셜 로그인', dot: 'is-accent', cls: '', count: socialCount },
-    { key: '해외 서비스', dot: 'is-caution', cls: ' is-caution', count: overseasCount },
-    { key: '미사용 12개월+', dot: 'is-warn', cls: ' is-warn', count: unusedCount },
+    { key: '소셜 로그인', dot: 'is-accent', cls: '', count: inv?.social ?? 0 },
+    { key: '해외 서비스', dot: 'is-caution', cls: ' is-caution', count: inv?.overseas ?? 0 },
+    { key: '미사용 12개월+', dot: 'is-warn', cls: ' is-warn', count: inv?.unused ?? 0 },
   ];
 
   // 4축 진단·추천은 정리 전(위험 남음)이며 API 준비된 경우만 노출.
@@ -329,33 +377,35 @@ export default function DashboardPage() {
       {/* 요약 통계 */}
       <h2 className="section-label">요약</h2>
       <div className="stat-grid">
+        {/* 델타 문구도 파생값만 쓴다. "지난주 대비 +2"·"이번 주 신규 1건"·"모두 점검 완료"는
+            근거 없는 고정 문자열이었다 — 데이터가 뭐든 같은 말을 했다. */}
         <div className="stat">
           <div className="lbl">연결 계정</div>
-          <div className="num">
-            <CountUp value={accounts.length} />
-          </div>
-          <div className="delta">지난주 대비 +2</div>
+          <div className="num">{n(inv?.total) === null ? '—' : <CountUp value={inv!.total} />}</div>
+          <div className="delta">{inv === null ? '불러오는 중' : `확인된 계정 ${inv.total}개 기준`}</div>
         </div>
         <div className="stat">
           <div className="lbl">유출 발견</div>
           <div className="num danger">
-            <CountUp value={breachedCount} />
+            {n(inv?.breached) === null ? '—' : <CountUp value={inv!.breached} />}
           </div>
-          <div className="delta is-danger">이번 주 신규 1건</div>
+          <div className={inv && inv.breached > 0 ? 'delta is-danger' : 'delta'}>
+            {inv === null ? '불러오는 중' : inv.breached > 0 ? '미해결 유출' : '미해결 없음'}
+          </div>
         </div>
         <div className="stat">
           <div className="lbl">정리 대기</div>
           <div className="num warn">
-            <CountUp value={cleanupCount} />
+            {n(inv?.cleanup) === null ? '—' : <CountUp value={inv!.cleanup} />}
           </div>
-          <div className="delta">12개월 이상 미사용</div>
+          <div className="delta">6개월 이상 안 쓴 소셜 연결</div>
         </div>
         <div className="stat">
           <div className="lbl">해외 서비스</div>
           <div className="num">
-            <CountUp value={overseasCount} />
+            {n(inv?.overseas) === null ? '—' : <CountUp value={inv!.overseas} />}
           </div>
-          <div className="delta is-up">모두 점검 완료</div>
+          <div className="delta">{inv === null ? '불러오는 중' : `전체의 ${pct(inv.overseas)}%`}</div>
         </div>
       </div>
 
@@ -364,7 +414,9 @@ export default function DashboardPage() {
         <section className="panel">
           <div className="panel-head">
             <h3>위험 분포</h3>
-            <span className="panel-note">전체 {accounts.length}개 계정</span>
+            <span className="panel-note">
+              {inv === null ? '계정 확인 중' : `전체 ${inv.total}개 계정`}
+            </span>
           </div>
           {bars.map((b) => (
             <div className="bar-row" key={b.key}>
@@ -490,7 +542,7 @@ export default function DashboardPage() {
               <span className="alert-mark" aria-hidden="true" />
               <strong>
                 {demo.riskAlert.bodyPrefix}
-                {highRiskCount}
+                {inv?.highRisk ?? 0}
                 {demo.riskAlert.bodySuffix}
               </strong>
             </p>
