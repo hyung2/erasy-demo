@@ -169,6 +169,10 @@ export const deleteRequests: DeleteRequest[] = [
   { id: 'r2', service: 'Quora', status: '진행중', eta: '3~5일' },
   { id: 'r3', service: 'Medium', status: '요청됨', eta: '접수 대기' },
   { id: 'r4', service: '카카오스토리', status: '요청됨', eta: '접수 대기' },
+  // 뽐뿌는 재사용·유출·600일 방치가 겹친 최악 계정이라 페르소나가 정리를 요청한 상태로 둔다.
+  // 이 줄이 없으면 회복 투영이 큐 밖 계정을 손으로 끼워넣어야 93이 나온다 — 표적을 데이터로
+  // 옮기기 위한 시드 보강이다(2026-08-04). 큐 기반 투영의 대상 수는 이 배열이 정본.
+  { id: 'r5', service: '뽐뿌', status: '요청됨', eta: '접수 대기' },
 ];
 
 export function requestTone(status: RequestStatus): 'success' | 'warning' | 'neutral' {

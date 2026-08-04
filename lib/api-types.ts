@@ -59,6 +59,19 @@ export type ScoreDTO = {
   axes: Record<AxisKey, AxisScore>; // 4축(E·S·H·T) 상세(raw score·measured·coverage)
   weakestAxis: AxisKey | null; // 최약축(추천 액션 근거)
   expectedGains: ExpectedGainItem[]; // 회복 레버별 기대 상승폭(하한 0)
+  // 회복 투영 — 이 사용자의 실제 계정·정리 큐 기준 "담아 둔 정리를 끝내면 여기까지".
+  //   결과 화면이 클라이언트에서 시드로 자체 계산하던 것을 대체한다. 계정 수와 무관하게
+  //   항상 24→93이 나오던 결함의 수정 경로다(2026-08-04).
+  recovery: RecoveryProjectionDTO;
+};
+
+// 회복 투영 DTO. score-projection의 RecoveryProjection과 동형(직렬화 가능 필드만).
+export type RecoveryProjectionDTO = {
+  beforeComposite: number | null;
+  afterComposite: number | null;
+  beforeAxes: Record<AxisKey, AxisScore>;
+  afterAxes: Record<AxisKey, AxisScore>;
+  axisKeys: AxisKey[];
 };
 
 // GET /api/guard — 실시간 가드(알림 + 유출)
