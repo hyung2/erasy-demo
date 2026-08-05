@@ -21,9 +21,11 @@ type ScanData = {
   phraseCount: number;
   /** 질의에 걸린 메일 수. */
   listed: number;
-  /** 상한에서 잘렸는가 — 잘랐다는 사실을 숨기지 않는다. */
+  /** 질의에 더 남았는데 상한·시간에서 멈췄는가 — 잘랐다는 사실을 숨기지 않는다. */
   truncated: boolean;
   maxMessages: number;
+  /** 목록에는 있었으나 시간 예산으로 확인하지 못한 건수. */
+  skipped: number;
   /** 카탈로그로 이름을 확정하지 못해 도메인으로 담은 건수(사용자 확인 필요량). */
   unnamed: number;
   /** 인벤토리에 새로 추가된 계정 수. */
@@ -188,7 +190,10 @@ export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
             가입·인증 메일 문구 {data.phraseCount}가지로 찾아 <strong>발신 주소로 서비스를 되짚었습니다</strong>
             (메일 {data.listed}건 확인). 정해진 목록에 없는 서비스도 담기지만, 그 문구가 없는
             가입 메일은 여전히 찾지 못합니다 — 못 찾은 것이지 없는 것이 아닙니다.
-            {data.truncated && ` 한 번에 ${data.maxMessages}건까지만 훑어 그 뒤는 빠졌습니다 — 다시 스캔하면 이어서 찾습니다.`}
+            {data.truncated &&
+              ` 한 번에 ${data.maxMessages}건까지만 훑습니다 — 조건에 맞는 메일이 그보다 많아 나머지는 이번 결과에 빠졌습니다.`}
+            {data.skipped > 0 &&
+              ` 시간이 모자라 ${data.skipped}건은 확인하지 못했습니다.`}
             {data.failedQueries > 0 && ` 조회 실패 ${data.failedQueries}건은 결과에서 빠졌습니다.`}
           </p>
           {data.unnamed > 0 && (

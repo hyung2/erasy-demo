@@ -20,9 +20,16 @@ const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 // 기존 측정과 비교할 수 없게 된다(2026-08-04 레드팀 조건).
 const LOOKBACK = 'newer_than:3y';
 // 한 번에 훑을 메시지 상한. 넘치면 잘랐다는 사실을 결과에 그대로 노출한다(조용한 절단 금지).
-const MAX_MESSAGES = 180;
-// metadata 동시 호출 수 — Gmail rate limit과 25초 예산 사이의 타협.
+//   180으로 뒀을 때 실계정 첫 시도에서 바로 걸렸다 — 카탈로그 36을 없앤 자리에 새 상한이
+//   들어앉는 셈이라 올렸다(2026-08-04 실측).
+const MAX_MESSAGES = 500;
+// list 한 페이지 크기. Gmail은 최대 500까지 받지만 페이지를 나눠야 중단 지점을 잡을 수 있다.
+const PAGE_SIZE = 250;
+// metadata 동시 호출 수 — Gmail rate limit과 시간 예산 사이의 타협.
 const CONCURRENCY = 10;
+// 전체 abort(25s)보다 앞서 스스로 멈추는 지점. 여기서 끊으면 부분 결과를 정직하게 돌려줄 수
+// 있지만, abort에 걸리면 통째로 502가 되어 사용자가 아무것도 못 본다.
+const SOFT_BUDGET_MS = 18_000;
 
 type ListResponse = { messages?: Array<{ id: string }> };
 type MetaResponse = {
@@ -65,24 +72,43 @@ async function messageMeta(
 async function listSignupMessages(
   token: string,
   signal: AbortSignal,
+  deadline: number,
 ): Promise<{ ids: string[]; truncated: boolean }> {
   const q = `(${openScanQuery()}) ${LOOKBACK}`;
-  const listUrl = `${GMAIL}/messages?maxResults=${MAX_MESSAGES}&q=${encodeURIComponent(q)}`;
-  const res = await fetch(listUrl, { headers: { authorization: `Bearer ${token}` }, signal });
-  if (!res.ok) throw new Error(`list ${res.status}`);
+  const ids: string[] = [];
+  let pageToken: string | undefined;
 
-  const body = (await res.json()) as ListResponse & { nextPageToken?: string };
-  const ids = (body.messages ?? []).map((m) => m.id);
-  // nextPageToken이 있으면 더 있다는 뜻 — 상한에서 잘랐다는 사실을 숨기지 않는다.
-  return { ids, truncated: Boolean(body.nextPageToken) };
+  // nextPageToken을 따라간다. 페이지를 안 넘기면 첫 페이지가 곧 발견 상한이 되고,
+  // "다시 스캔하면 이어서 찾습니다"는 지킬 수 없는 약속이 된다(같은 질의 → 같은 첫 페이지).
+  do {
+    const want = Math.min(PAGE_SIZE, MAX_MESSAGES - ids.length);
+    if (want <= 0) break;
+    const url =
+      `${GMAIL}/messages?maxResults=${want}&q=${encodeURIComponent(q)}` +
+      (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
+    const res = await fetch(url, { headers: { authorization: `Bearer ${token}` }, signal });
+    if (!res.ok) throw new Error(`list ${res.status}`);
+
+    const body = (await res.json()) as ListResponse & { nextPageToken?: string };
+    for (const m of body.messages ?? []) ids.push(m.id);
+    pageToken = body.nextPageToken;
+  } while (pageToken && ids.length < MAX_MESSAGES && Date.now() < deadline);
+
+  // 더 남았는데 우리가 멈춘 경우에만 truncated다.
+  return { ids, truncated: Boolean(pageToken) };
 }
 
-/** 메시지 메타데이터를 제한 동시성으로 모은다. 실패 건수는 그대로 돌려준다. */
+/**
+ * 메시지 메타데이터를 제한 동시성으로 모은다.
+ * 시간 예산을 넘기면 남은 건을 포기하고 **포기했다는 사실을 함께 돌려준다** — 조용히 줄이면
+ * 사용자는 그게 전부인 줄 안다.
+ */
 async function collectMeta(
   token: string,
   ids: string[],
   signal: AbortSignal,
-): Promise<{ messages: MessageMeta[]; failed: number; unauthorized: boolean }> {
+  deadline: number,
+): Promise<{ messages: MessageMeta[]; failed: number; unauthorized: boolean; skipped: number }> {
   const messages: MessageMeta[] = [];
   let failed = 0;
   let unauthorized = false;
@@ -90,6 +116,7 @@ async function collectMeta(
 
   async function worker() {
     while (cursor < ids.length) {
+      if (Date.now() > deadline) break;
       const i = cursor++;
       try {
         const m = await messageMeta(token, ids[i], signal);
@@ -102,7 +129,8 @@ async function collectMeta(
   }
 
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, ids.length) }, worker));
-  return { messages, failed, unauthorized };
+  const processed = Math.min(cursor, ids.length);
+  return { messages, failed, unauthorized, skipped: Math.max(0, ids.length - processed) };
 }
 
 /**
@@ -179,8 +207,14 @@ export async function POST(req: Request) {
   const timer = setTimeout(() => controller.abort(), 25_000);
 
   try {
-    const { ids, truncated } = await listSignupMessages(token, controller.signal);
-    const { messages, failed, unauthorized } = await collectMeta(token, ids, controller.signal);
+    const deadline = Date.now() + SOFT_BUDGET_MS;
+    const { ids, truncated } = await listSignupMessages(token, controller.signal, deadline);
+    const { messages, failed, unauthorized, skipped } = await collectMeta(
+      token,
+      ids,
+      controller.signal,
+      deadline,
+    );
 
     // 전량 실패 + 401 = 토큰이 죽었거나 scope 미승인. 빈 결과를 "깨끗함"으로 오인시키지 않는다.
     if (unauthorized && messages.length === 0) {
@@ -198,8 +232,9 @@ export async function POST(req: Request) {
         // 정직 표기용 — 무엇을 몇 건 훑었고 무엇을 못 했는지 숨기지 않는다.
         phraseCount: OPEN_SCAN_PHRASES.length,
         listed: ids.length,
-        truncated, // 상한(MAX_MESSAGES)에서 잘렸는가
+        truncated, // 질의에 더 남았는데 상한·시간에서 멈췄는가
         maxMessages: MAX_MESSAGES,
+        skipped, // 목록에 있었으나 시간 예산으로 확인하지 못한 건수
         failedQueries: failed,
       },
     });
