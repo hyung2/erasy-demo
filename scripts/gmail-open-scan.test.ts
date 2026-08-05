@@ -91,6 +91,33 @@ check('a3 이미 최소 형태', registrableDomain('discord.com') === 'discord.c
   check('c10 훑은 건수 보고', r.scanned === 5, `${r.scanned}건`);
 }
 
+// ── c2. 발송 대행 도메인 제외 ──
+{
+  const v = resolveOpenSender('Shop <noreply@shopifyemail.com>');
+  check('f1 발송 대행은 서비스로 담지 않음', v.kind === 'infra', v.kind);
+}
+{
+  const v = resolveOpenSender('AWS <no-reply@amazonaws.com>');
+  check('f2 클라우드 알림 경로도 제외', v.kind === 'infra', v.kind);
+}
+{
+  // 대행사를 통해 보낸 서로 다른 쇼핑몰이 한 줄로 뭉개지면 안 된다 — 담지 않는 이유.
+  const r = foldOpenMessages(
+    [
+      msg('A샵 <noreply@shopifyemail.com>', 3),
+      msg('B샵 <noreply@shopifyemail.com>', 8),
+      msg('센드그리드 경유 <bounce@sendgrid.net>', 12),
+      msg('RIDI <noreply@ridibooks.com>', 20),
+    ],
+    NOW,
+  );
+  check('f3 대행 도메인은 hits에 없음', r.hits.length === 1 && r.hits[0].service === 'ridibooks.com',
+    r.hits.map((h) => h.service).join(','));
+  check('f4 제외 건수 집계', r.excludedInfra === 3, `${r.excludedInfra}건`);
+  check('f5 제외 도메인 노출', r.infraDomains.includes('shopifyemail.com'), r.infraDomains.join(','));
+  check('f6 많이 보낸 순 정렬', r.infraDomains[0] === 'shopifyemail.com', r.infraDomains.join(','));
+}
+
 // ── d. 질의문 ──
 {
   const q = openScanQuery();

@@ -247,6 +247,48 @@ const WEBMAIL_DOMAINS = new Set([
   'empas.com',
 ]);
 
+/**
+ * **남을 대신해 메일을 보내는 도메인.** 여기서 온 메일은 가입 사실을 증명하지만
+ * *어느 서비스에 가입했는지*는 알려주지 않는다 — 발송 대행사의 주소이기 때문이다.
+ *
+ * 담으면 안 되는 이유가 두 가지다. (1) 사용자가 가입한 적 없는 회사가 계정 목록에 뜬다.
+ * (2) 더 나쁜 건 뭉개짐이다 — `shopifyemail.com` 하나에 서로 다른 쇼핑몰 수십 곳이
+ * 한 줄로 접힌다. 실계정 측정에서 실제로 이 오염이 확인됐다(2026-08-05: 61곳 중 다수).
+ *
+ * 버리지 않고 **제외했다는 사실과 도메인을 화면에 남긴다** — 못 찾은 것과 없는 것은 다르다.
+ */
+const INFRA_DOMAINS = new Set([
+  // 트랜잭션·마케팅 메일 발송 대행(ESP)
+  'sendgrid.net',
+  'mailgun.org',
+  'mailgun.net',
+  'mandrillapp.com',
+  'mailchimp.com',
+  'mcsv.net',
+  'sparkpostmail.com',
+  'postmarkapp.com',
+  'sendinblue.com',
+  'brevo.com',
+  'klaviyomail.com',
+  'shopifyemail.com',
+  'createsend.com',
+  'hubspotemail.net',
+  'replicate.email',
+  'sparkpost.com',
+  'amazonses.com',
+  'stibee.com',
+  // 클라우드·플랫폼 인프라(서비스 자체가 아니라 알림 경로)
+  'amazonaws.com',
+  'cloudfront.net',
+  'microsoftonline.com',
+  'azurecomm.net',
+  'notifications.google.com',
+  // 결제 인프라 — 가맹점을 대신해 보낸다
+  'link.com',
+  'stripe.com',
+  'paypal-communication.com',
+]);
+
 /** `co.kr`처럼 2단계 국가 TLD — 등록 가능 도메인을 자를 때 한 칸 더 남긴다. */
 const MULTI_LEVEL_TLDS = new Set([
   'co.kr', 'or.kr', 'ne.kr', 'go.kr', 're.kr', 'pe.kr', 'ac.kr',
@@ -266,10 +308,20 @@ export function registrableDomain(domain: string): string {
   return lastTwo;
 }
 
+/**
+ * 이 이름·도메인이 발송 대행 주소인가. 이미 인벤토리에 담긴 오염 항목을 걷어낼 때도 쓴다
+ * (개방 모드 도입 전에 저장된 계정은 이 판정을 거치지 않았다).
+ */
+export function isInfraDomain(nameOrDomain: string): boolean {
+  return INFRA_DOMAINS.has(registrableDomain(nameOrDomain.trim().toLowerCase()));
+}
+
 /** 개방 모드 판정 결과. 카탈로그에 없으면 도메인 자체를 서비스명 후보로 돌려준다. */
 export type OpenSenderVerdict =
   | { kind: 'invalid' }
   | { kind: 'personal'; domain: string }
+  /** 발송 대행 도메인 — 가입은 했으나 어느 서비스인지 특정 불가. 담지 않고 사실만 남긴다. */
+  | { kind: 'infra'; domain: string }
   /** 카탈로그 적중 — 표시명·분류를 사전에서 가져온다. */
   | { kind: 'known'; entry: CatalogEntry; domain: string }
   /** 카탈로그 밖 — 이름을 지어내지 않고 등록 가능 도메인을 그대로 후보명으로 쓴다. */
@@ -301,6 +353,11 @@ export function resolveOpenSender(fromHeader: string): OpenSenderVerdict {
   // 카탈로그 밖이지만 개인 메일함 도메인이면 발신 전용 주소만 서비스로 인정한다.
   if (WEBMAIL_DOMAINS.has(registrable) && !isServiceSender(addr.localPart)) {
     return { kind: 'personal', domain: addr.domain };
+  }
+  // 발송 대행 도메인은 "어느 서비스인지"를 알려주지 않는다. 담으면 가입한 적 없는 회사가
+  // 목록에 뜨고, 서로 다른 가맹점이 한 줄로 뭉개진다.
+  if (INFRA_DOMAINS.has(registrable)) {
+    return { kind: 'infra', domain: registrable };
   }
   return { kind: 'discovered', name: registrable, domain: addr.domain };
 }

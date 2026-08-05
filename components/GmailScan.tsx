@@ -28,6 +28,9 @@ type ScanData = {
   skipped: number;
   /** 카탈로그로 이름을 확정하지 못해 도메인으로 담은 건수(사용자 확인 필요량). */
   unnamed: number;
+  /** 발송 대행 도메인이라 어느 서비스인지 특정하지 못해 담지 않은 건수. */
+  excludedInfra: number;
+  infraDomains: string[];
   /** 인벤토리에 새로 추가된 계정 수. */
   discoveredCount: number;
   /** 활동일이 갱신된 기존 계정 수. */
@@ -200,6 +203,14 @@ export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
             <p className="advice">
               {data.unnamed}곳은 서비스 이름을 확정하지 못해 <strong>보낸 도메인 그대로</strong> 담았습니다.
               이름을 지어내지 않습니다 — 목록에서 직접 고쳐 주세요.
+            </p>
+          )}
+          {data.excludedInfra > 0 && (
+            <p className="advice">
+              메일 발송을 대행하는 주소에서 온 {data.excludedInfra}건은 담지 않았습니다
+              {data.infraDomains.length > 0 && ` (${data.infraDomains.slice(0, 3).join(' · ')}${data.infraDomains.length > 3 ? ' 외' : ''})`}
+              . 가입한 건 맞지만 <strong>어느 서비스인지 이 주소로는 알 수 없어</strong>, 서로 다른 곳을
+              한 줄로 뭉개지 않으려고 뺐습니다.
             </p>
           )}
           {data.excludedPersonal > 0 && (

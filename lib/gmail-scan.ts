@@ -111,9 +111,11 @@ function daysBetween(then: number, now: number): number {
 export function foldOpenMessages(
   messages: MessageMeta[],
   now: number,
-): ScanResult & { unnamed: number } {
+): ScanResult & { unnamed: number; excludedInfra: number; infraDomains: string[] } {
   const byService = new Map<string, ScanHit>();
+  const infra = new Map<string, number>();
   let excludedPersonal = 0;
+  let excludedInfra = 0;
   let unnamed = 0;
 
   for (const msg of messages) {
@@ -121,6 +123,12 @@ export function foldOpenMessages(
     if (v.kind === 'invalid') continue;
     if (v.kind === 'personal') {
       excludedPersonal += 1;
+      continue;
+    }
+    // 발송 대행 도메인 — 담지 않되 무엇을 걸렀는지는 남긴다.
+    if (v.kind === 'infra') {
+      excludedInfra += 1;
+      infra.set(v.domain, (infra.get(v.domain) ?? 0) + 1);
       continue;
     }
 
@@ -153,10 +161,13 @@ export function foldOpenMessages(
   const hits = [...byService.values()].sort((a, b) => b.lastSeenAt - a.lastSeenAt);
   return {
     hits,
-    unmatchedDomains: 0, // 개방 모드에서는 버리는 도메인이 없다
+    unmatchedDomains: 0, // 개방 모드에서는 카탈로그 밖이라고 버리지 않는다
     excludedPersonal,
     scanned: messages.length,
     unnamed,
+    excludedInfra,
+    // 많이 보낸 순 — 화면에 몇 곳만 예시로 보여주기 위함.
+    infraDomains: [...infra.entries()].sort((a, b) => b[1] - a[1]).map(([d]) => d),
   };
 }
 
