@@ -57,7 +57,16 @@ export type ScoreRowV2 = {
   //   시드·OAuth 연동 계정 = true(수집 경로 존재). 사용자가 서비스명만 적어 직접 추가하고
   //   아무 신호도 신고하지 않은 계정 = false. false를 분모에 넣으면 "미확인"이 "안전"으로 계상된다.
   passwordSignalObserved: boolean;
-  discovered: boolean; // 미인지 계정(S축)
+  discovered: boolean; // 발견 계정(S축) — 우리가 찾아준 계정
+  /**
+   * 사용자가 그 발견을 확인했는가. S축 "미인지" 인자는 `discovered ∧ ¬acknowledged`일 때만 적용된다.
+   *
+   * 왜 확인이 회복인가: 이 인자가 재는 위험은 "계정이 있다는 사실을 **모른다**"는 것이다(SSOT 3.2).
+   * 화면으로 보여준 뒤에도 감점이 남으면 그 위험은 이미 사라졌는데 계속 세는 셈이고, 발견이
+   * 주 수집 경로가 된 뒤에는 "계정을 많이 찾을수록 감점"이 되어 불변 원칙 "규모 무감점"을 깬다.
+   * 확인해도 계정 **자체**의 위험(방치·유출·위생)은 그대로 남는다 — 그건 정리해야 사라진다.
+   */
+  acknowledged: boolean;
   breachedUnresolved: boolean; // Breach 관계(resolved=false)에서 파생(E축)
   breachedPasswordExposed: boolean; // exposedFields에 "비밀번호" 포함
   suspiciousRecent: boolean; // 최근 90일 suspicious AccessLog 보유(T축)
@@ -199,8 +208,10 @@ export function computeSurface(rows: ScoreRowV2[]): AxisScore {
     } else if (isOverseasActive(r)) {
       survival *= 1 - P.overseasActive;
     }
-    // 미인지(독립 인자) — 제거 이력이 없는 미인지 계정만(removed는 위에서 이미 skip)
-    if (r.discovered) {
+    // 미인지(독립 인자) — 발견됐고 **아직 확인하지 않은** 계정만(removed는 위에서 이미 skip).
+    //   확인하면 계수가 빠져 점수가 오른다(곱셈 가역성). 이 인자가 재는 것은 계정의 위험이
+    //   아니라 "모르고 있다"는 상태이며, 확인이 곧 그 상태의 해소다.
+    if (r.discovered && !r.acknowledged) {
       survival *= 1 - P.discovered;
       discoveredN += 1;
     }

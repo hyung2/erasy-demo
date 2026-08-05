@@ -82,6 +82,29 @@ export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ScanData | null>(null);
+  // 확인 처리 — 성공 시 처리 건수를 담는다. null이면 아직 안 누른 상태.
+  const [acked, setAcked] = useState<number | null>(null);
+  const [acking, setAcking] = useState(false);
+  const [ackError, setAckError] = useState<string | null>(null);
+
+  async function acknowledge() {
+    if (acking) return;
+    setAcking(true);
+    setAckError(null);
+    try {
+      const res = await fetch('/api/accounts/acknowledge', { method: 'POST' });
+      const body = (await res.json()) as { ok: boolean; error?: string; data?: { acknowledged: number } };
+      if (!res.ok || !body.ok) {
+        setAckError(body.error ?? '확인 처리에 실패했습니다.');
+        return;
+      }
+      setAcked(body.data?.acknowledged ?? 0);
+    } catch {
+      setAckError('네트워크 오류가 발생했습니다.');
+    } finally {
+      setAcking(false);
+    }
+  }
 
   async function runScan() {
     setError(null);
@@ -224,6 +247,39 @@ export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
               새로 추가한 계정은 <strong>가입 방식 미확인</strong>으로 둡니다. 메일 발신자만으로는
               간편가입인지 이메일 가입인지 알 수 없어 추측하지 않습니다.
             </p>
+          )}
+
+          {/* 확인 = S축 "미인지" 인자 해제. 점수가 왜 오르는지 함께 설명해야 게이밍처럼 보이지 않는다. */}
+          {data.hits.length > 0 && (
+            <div className="ack-box">
+              {acked === null ? (
+                <>
+                  <p className="advice">
+                    목록을 확인하셨으면 아래를 눌러 주세요. <strong>&ldquo;모르는 계정이 있다&rdquo;는 위험이
+                    사라져 안전도가 오릅니다.</strong> 계정 자체의 위험(오래 방치·유출·비밀번호 습관)은
+                    그대로 남아 있고, 그건 정리해야 없어집니다.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={acknowledge}
+                    disabled={acking}
+                  >
+                    {acking ? '확인 처리 중…' : '목록 확인했어요'}
+                  </button>
+                </>
+              ) : (
+                <p className="advice">
+                  {acked}곳을 확인 처리했습니다. 이제 <strong>모르고 있던 계정</strong>이 아니라
+                  <strong> 알고 관리하는 계정</strong>입니다. 대시보드에서 오른 점수를 확인해 보세요.
+                </p>
+              )}
+              {ackError && (
+                <p className="status danger" role="alert">
+                  {ackError}
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}

@@ -123,6 +123,8 @@ function toRowV2(r: DbAccountRow): ScoreRowV2 {
     passwordSignalObserved:
       SIGNAL_OBSERVED_SOURCES.has(r.source) || r.passwordReused || r.twoFactorEnabled,
     discovered: r.discovered,
+    // 확인 시각이 있으면 "미인지" 상태가 해소된 것 — S축 미인지 인자가 빠진다.
+    acknowledged: r.acknowledgedAt !== null,
     breachedUnresolved: unresolved.length > 0,
     breachedPasswordExposed: unresolved.some((b) =>
       b.exposedFields.includes('비밀번호'),
@@ -153,6 +155,7 @@ function memoryRowsV2(): ScoreRowV2[] {
       passwordReused: a.passwordReused ?? false,
       passwordSignalObserved: true, // 시드 인벤토리는 전부 수집 경로 있음
       discovered: a.discovered ?? false,
+      acknowledged: false, // 메모리 폴백은 시드 신호 — 확인 이력 없음
       breachedUnresolved: b !== null,
       breachedPasswordExposed: b?.exposedFields.includes('비밀번호') ?? false,
       suspiciousRecent: false,

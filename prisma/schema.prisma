@@ -120,6 +120,13 @@ model Account {
   breached         Boolean   @default(false) // 유출 캐시 신호(Breach 관계에서 동기화)
 
   discovered Boolean   @default(false) // 사용자가 몰랐던 계정
+  // 발견 계정을 사용자가 확인한 시각. null = 아직 확인 안 함.
+  //   투명설계안 v2의 S축 "미인지 · 미조치" 인자(p=0.03)는 **모르고 있다는 사실 자체**가 위험이라
+  //   감점한다. 그런데 스캔이 화면에 보여준 뒤에도 discovered가 내려가지 않아, 이 신호만
+  //   "감점과 회복은 같은 곱셈의 양방향"이라는 원칙에서 빠져 있었다. 발견이 주 수집 경로가 되자
+  //   (A1) 인벤토리 전체에 붙어 "계정을 많이 찾을수록 감점" — 불변 원칙 "규모 무감점" 위반이 됐다.
+  //   확인 시각을 남겨 인자를 해제한다(2026-08-05). 계정 자체의 위험(방치·유출·위생)은 그대로 남는다.
+  acknowledgedAt DateTime?
   riskTags   RiskTag[] // 다중 위험 신호 → 신호등 색
 
   createdAt DateTime @default(now())

@@ -125,6 +125,7 @@ function rowsAt(snapshotDaysAgo: number): ScoreRowV2[] {
       passwordReused: a.passwordReused ?? false,
       passwordSignalObserved: true, // 시드 인벤토리는 전부 수집 경로 있음(source='seed')
       discovered: a.discovered ?? false,
+      acknowledged: false, // 시드는 확인 이력 없음 — 앵커 24 보존
       breachedUnresolved: b !== null,
       breachedPasswordExposed: b?.exposedFields.includes('비밀번호') ?? false,
       // 그 시점 기준 90일 창 안의 이상접속만 계상
