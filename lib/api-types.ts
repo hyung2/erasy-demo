@@ -105,6 +105,42 @@ export type AccessLogDTO = {
   suspicious: boolean;
 };
 
+// ── /api/cleanup/requests — 정리 큐 담기·빼기·조회 ──
+//
+// 왜 mark와 별개인가: mark는 이미 담긴 요청의 **상태 전이**(queued→done) 계약이다.
+// 담기는 요청의 **생성**이고, 사용자가 한 번에 수십 건을 담는다. 두 계약을 한 라우트에
+// 섞으면 accountId 단건·status 필수라는 mark의 shape가 일괄 담기를 막는다(스키마 O6 주석의 분리 의도).
+//
+// actionType은 서버가 provider에서 파생한다 — 클라이언트가 정하지 않는다.
+// OAuth로 연결된 계정은 연결 해제(revoke), 자체 가입 계정은 삭제 요청(delete)이 실제 행동이며,
+// 이건 추측이 아니라 provider가 이미 알고 있는 사실이다.
+export type CleanupQueueItemDTO = {
+  accountId: string;
+  accountName: string;
+  actionType: 'delete' | 'revoke';
+  status: 'queued' | 'in_progress' | 'done' | 'failed';
+  createdAt: string;
+};
+
+export type CleanupQueueRequest = {
+  accountIds: string[];
+};
+
+// queued = 이번에 새로 담긴 수 · alreadyQueued = 이미 담겨 있어 건너뛴 수(멱등).
+// notFound = 이 사용자 소유가 아니거나 DB에 없는 id 수. 시드 폴백 화면(실계정 0건)에서
+//   담기를 누르면 여기로 잡힌다 — 조용히 0건 성공으로 보이면 안 되므로 수를 내려보낸다.
+export type CleanupQueueResponse = {
+  queued: number;
+  alreadyQueued: number;
+  notFound: number;
+  items: CleanupQueueItemDTO[];
+};
+
+// DELETE /api/cleanup/requests — 큐에서 빼기(미완료분만). 완료된 이력은 지우지 않는다.
+export type CleanupQueueRemoveResponse = {
+  removed: number;
+};
+
 // POST /api/cleanup/mark — 정리 상태 전이
 export type CleanupMarkRequest = {
   accountId: string;

@@ -889,6 +889,9 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 .score-up.is-flat { color: var(--text-mute); }
 .score-up span { color: var(--text-mute); font-weight: 400; margin-left: 4px; }
 .score-sub { color: var(--text-dim); font-size: 0.875rem; }
+/* 담아 둔 정리의 도달점 — 예정이지 현재가 아니다. 헤드라인보다 약하게 두어 둘을 혼동하지 않게 한다. */
+.score-pending { margin-top: 6px; color: var(--text-mute); }
+.score-pending strong { color: var(--safe); font-weight: 600; font-variant-numeric: tabular-nums; }
 .score-gauge { margin-top: 16px; max-width: 420px; }
 
 /* --- 막대 --- */

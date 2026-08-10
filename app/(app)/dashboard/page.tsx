@@ -1,29 +1,21 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useDemo } from '@/components/DemoStateClient';
 import { CountUp } from '@/components/CountUp';
 import { ScoreBenchmarkChart } from '@/components/ScoreBenchmarkChart';
 import { demo } from '@/content/copy';
-import type { ScoreDTO, AccountDTO } from '@/lib/api-types';
+import type { ScoreDTO, AccountDTO, CleanupQueueItemDTO } from '@/lib/api-types';
 import type { AxisKey, ActionType } from '@/lib/score-v2';
-import {
-  deriveGrade,
-  targetScore,
-  activityFeed,
-  peerMonthlyAvg,
-  type FeedItem,
-} from '@/lib/dummy-data';
+import { activityFeed, peerMonthlyAvg, type FeedItem } from '@/lib/dummy-data';
 
 // 요약·분포 수치는 **이 사용자의 실제 인벤토리**(/api/accounts)에서 파생한다.
 // 이전에는 dummy-data의 모듈 상수(accounts.length·breachedCount·overseasCount…)를 그대로 렌더해
 // 계정이 30개여도 화면은 늘 24라고 말했다. 점수만 실값이고 나머지가 시드라 scan 화면(27·30)과
 // 숫자가 어긋났다(2026-08-04 실측). 로딩 전에는 시드 숫자로 때우지 않고 —로 비워 둔다.
 const DORMANT_DAYS = 365; // "미사용 12개월+" 기준
-const CLEANUP_DAYS = 180; // 정리 대기 = 6개월 이상 방치된 소셜 연결(deriveCleanupCandidates 규칙 승계)
-const CLEANUP_MAX = 7;
 
 type Inventory = {
   total: number;
@@ -31,22 +23,16 @@ type Inventory = {
   overseas: number;
   social: number;
   unused: number;
-  cleanup: number;
   highRisk: number;
 };
 
 function summarize(list: AccountDTO[]): Inventory {
-  const isSocialLink = (a: AccountDTO) => a.provider !== 'manual';
   return {
     total: list.length,
     breached: list.filter((a) => a.breached).length,
     overseas: list.filter((a) => a.category === 'overseas').length,
     social: list.filter((a) => a.category === 'social').length,
     unused: list.filter((a) => a.lastUsedDays >= DORMANT_DAYS).length,
-    cleanup: Math.min(
-      CLEANUP_MAX,
-      list.filter((a) => isSocialLink(a) && a.lastUsedDays >= CLEANUP_DAYS).length,
-    ),
     highRisk: list.filter((a) => a.risk === 'high').length,
   };
 }
@@ -100,6 +86,8 @@ export default function DashboardPage() {
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   // 인벤토리 실값 — 요약 카드·위험 분포의 근거. null이면 아직 모르는 상태이지 0이 아니다.
   const [inv, setInv] = useState<Inventory | null>(null);
+  // 정리 목록에 담아 둔 건수. 헤드라인 점수는 건드리지 않고, "끝내면 몇 점"만 예정으로 알린다.
+  const [pendingCleanup, setPendingCleanup] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -135,6 +123,27 @@ export default function DashboardPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/cleanup/requests')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((body: { data: CleanupQueueItemDTO[] }) => {
+        if (!alive) return;
+        // 완료(done)는 이미 끝난 일이라 "예정"이 아니다.
+        setPendingCleanup(
+          (body.data ?? []).filter((q) => q.status === 'queued' || q.status === 'in_progress')
+            .length,
+        );
+      })
+      .catch(() => {
+        // 못 가져오면 예정 줄을 띄우지 않는다(0 유지). 없는 건수를 지어내지 않는다.
+        if (alive) setPendingCleanup(0);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   /** 인벤토리 미확보 시 —. 0으로 때우면 "계정 없음"이라는 거짓 사실이 된다. */
   const n = (v: number | undefined) => (inv === null || v === undefined ? null : v);
   const pct = (v: number) => (inv === null || inv.total === 0 ? 0 : Math.round((v / inv.total) * 100));
@@ -142,14 +151,19 @@ export default function DashboardPage() {
   const apiScore = dto?.score ?? null;
   const apiGrade = dto?.grade ?? null;
 
-  // 정리 완료(데모) 시 회복 투영 도달점(계단 최종 93 — slide·result와 3곳 통일), 아니면 API 종합.
-  //   93은 하드코딩 아닌 엔진 회복 궤적(projectRecovery)에서 파생. 목표선 90은 별도(초과 달성).
-  // 정리 완료 상태의 도달점도 **이 사용자 투영**(API recovery)에서 온다. 시드 투영을 쓰면
-  // 결과 화면과 대시보드가 다른 도달점을 말한다(결과 화면은 08-04에 실데이터로 전환됨).
-  const recoveredScore = dto?.recovery?.afterComposite ?? targetScore;
-  const score = cleaned ? recoveredScore : (apiScore ?? 0);
-  const grade = cleaned ? deriveGrade(score) : (apiGrade ?? '위험');
-  const delta = cleaned ? recoveredScore - (apiScore ?? 0) : (dto?.delta ?? 0);
+  // 헤드라인은 **언제나 실측 점수**다.
+  //   이전에는 정리 요청을 접수하면(`cleaned`) 회복 투영 도달점을 점수 자리에 띄웠다. 그런데
+  //   접수는 "정리 목록에 담았다"는 뜻이지 정리를 끝냈다는 뜻이 아니다. 실제로는 아무 계정도
+  //   해제·삭제되지 않았는데 헤드라인만 오르니, "정리 안 했는데 왜 올랐나"에 답할 수 없었다.
+  //   08-04에 결과 화면이 시드로 24→93을 띄우던 것을 고친 것과 같은 문제다(도달점을 현재로 표기).
+  //   도달점은 아래 "정리 예정" 줄에서 **예정**으로만 말한다.
+  const score = apiScore ?? 0;
+  const grade = apiGrade ?? '위험';
+  const delta = dto?.delta ?? 0;
+  // 담아 둔 정리를 끝냈을 때의 도달점. 큐가 비면 상승 여지가 없으므로 줄 자체를 숨긴다.
+  const projectedScore = dto?.recovery?.afterComposite ?? null;
+  const showProjection =
+    pendingCleanup > 0 && projectedScore !== null && projectedScore > score;
 
   const scoreClass = grade === '위험' ? ' is-danger' : grade === '주의' ? ' is-warn' : '';
   const gaugeClass = grade === '양호' ? ' is-safe' : grade === '주의' ? ' is-warn' : ' is-danger';
@@ -200,8 +214,9 @@ export default function DashboardPage() {
     { key: '미사용 12개월+', dot: 'is-warn', cls: ' is-warn', count: inv?.unused ?? 0 },
   ];
 
-  // 4축 진단·추천은 정리 전(위험 남음)이며 API 준비된 경우만 노출.
-  const showDiagnostics = !cleaned && loadState === 'ready' && dto !== null;
+  // 4축 진단·추천은 API가 준비된 경우 노출. 정리 요청을 접수했다고 숨기지 않는다 —
+  //   담기는 조치가 아니므로 취약 축은 그대로 남아 있고, 화면이 그걸 감추면 안 된다.
+  const showDiagnostics = loadState === 'ready' && dto !== null;
   const weakestAxis = dto?.weakestAxis ?? null;
 
   // 추천 액션: 기대 상승폭 내림차순, 최약축 액션 우선. 상위 3개만.
@@ -254,7 +269,7 @@ export default function DashboardPage() {
       <section className="panel score-panel" aria-label="안전도 점수">
         <div className="score-figure">
           <div className={`score-big${scoreClass}`}>
-            {loadState !== 'ready' && !cleaned ? (
+            {loadState !== 'ready' ? (
               <span aria-live="polite">—</span>
             ) : (
               <CountUp value={score} />
@@ -269,10 +284,16 @@ export default function DashboardPage() {
             {deltaText} <span>직전 대비</span>
           </p>
           <p className="score-sub">
-            {loadState === 'error' && !cleaned
+            {loadState === 'error'
               ? '점수를 불러오지 못했어요. 로그인 후 다시 시도해 주세요.'
               : scoreSub}
           </p>
+          {/* 담아 둔 정리는 "예정"으로만 말한다. 접수했다고 점수가 오르지는 않는다. */}
+          {showProjection && (
+            <p className="score-sub score-pending">
+              정리 예정 {pendingCleanup}건 · 끝내면 <strong>{projectedScore}점</strong>
+            </p>
+          )}
           <div
             className={`bar score-gauge${gaugeClass}`}
             role="img"
@@ -393,12 +414,17 @@ export default function DashboardPage() {
             {inv === null ? '불러오는 중' : inv.breached > 0 ? '미해결 유출' : '미해결 없음'}
           </div>
         </div>
+        {/* 정리 대기 = **실제 정리 큐에 담긴 건수**. 이전에는 "6개월 이상 안 쓴 소셜 연결"을
+            상한 7로 잘라 세던 시드 규칙이라, 20건을 담아도 카드는 6이라고 말했다. 한 화면 안에서
+            같은 이름의 숫자가 둘로 갈리면 어느 쪽도 못 믿는다(2026-08-10). */}
         <div className="stat">
           <div className="lbl">정리 대기</div>
           <div className="num warn">
-            {n(inv?.cleanup) === null ? '—' : <CountUp value={inv!.cleanup} />}
+            <CountUp value={pendingCleanup} />
           </div>
-          <div className="delta">6개월 이상 안 쓴 소셜 연결</div>
+          <div className="delta">
+            {pendingCleanup > 0 ? '정리 목록에 담긴 계정' : '아직 담은 계정이 없어요'}
+          </div>
         </div>
         <div className="stat">
           <div className="lbl">해외 서비스</div>

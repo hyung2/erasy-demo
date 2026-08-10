@@ -8,7 +8,13 @@ import { riskLabel, riskClass, type Risk } from '@/lib/dummy-data';
 import { DISCOVERY_PATHS, linksByPath, type DiscoveryPath } from '@/lib/deep-links';
 import GmailScan from '@/components/GmailScan';
 import ConnectionImport from '@/components/ConnectionImport';
-import type { AccountDTO, LastUsedBucket, AccountUpdateRequest } from '@/lib/api-types';
+import type {
+  AccountDTO,
+  LastUsedBucket,
+  AccountUpdateRequest,
+  CleanupQueueItemDTO,
+  CleanupQueueResponse,
+} from '@/lib/api-types';
 
 type Filter = 'all' | 'social' | 'overseas' | 'unused';
 
@@ -75,8 +81,10 @@ export default function ScanPage() {
   const [score, setScore] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  // 정리 요청 접수된 서비스(연출) — 실제 revoke 없음. 상태만 로컬 반영.
-  const [requested, setRequested] = useState<Record<string, boolean>>({});
+  // 정리 큐에 담긴 계정 — **서버 정본**(/api/cleanup/requests). 이전에는 로컬 state만 바꿔서
+  //   새로고침하면 담은 사실이 사라졌고, 회복 투영(미완료 정리 요청 기준)은 아무것도 받지 못했다.
+  //   실제 연결 해제·삭제를 대행하지는 않는다 — 담기까지가 지금 약속하는 범위다.
+  const [queuedIds, setQueuedIds] = useState<Set<string>>(new Set());
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [confirmIds, setConfirmIds] = useState<string[]>([]);
 
@@ -99,6 +107,25 @@ export default function ScanPage() {
     }
   }
 
+  // 정리 큐 회수 — 담긴 상태는 서버가 정본이라 새로고침·탭 이동 후에도 유지된다.
+  async function loadQueue() {
+    try {
+      const r = await fetch('/api/cleanup/requests', { cache: 'no-store' });
+      if (!r.ok) return;
+      const body: { data: CleanupQueueItemDTO[] } = await r.json();
+      setQueuedIds(
+        new Set(
+          (body.data ?? [])
+            .filter((q) => q.status === 'queued' || q.status === 'in_progress')
+            .map((q) => q.accountId),
+        ),
+      );
+    } catch {
+      // 큐 조회 실패는 화면을 막지 않는다. 다만 담긴 표시가 빠질 수 있어 담기 시도 시
+      // 서버가 멱등으로 걸러낸다(중복 생성 없음).
+    }
+  }
+
   // 점수 재계산 트리거 + 결과 회수(자가신고/추가 직후 즉시 반영 확인).
   async function refreshScore(): Promise<number | null> {
     try {
@@ -115,6 +142,7 @@ export default function ScanPage() {
   useEffect(() => {
     void (async () => {
       await loadAccounts();
+      await loadQueue();
       await refreshScore();
     })();
   }, []);
@@ -145,7 +173,7 @@ export default function ScanPage() {
     [accounts, filter],
   );
 
-  const selectable = rows.filter((a) => !requested[a.id]);
+  const selectable = rows.filter((a) => !queuedIds.has(a.id));
   const selCount = selectable.filter((a) => checked[a.id]).length;
   const allSelected = selectable.length > 0 && selCount === selectable.length;
 
@@ -164,18 +192,53 @@ export default function ScanPage() {
   function openSingle(id: string) {
     setConfirmIds([id]);
   }
-  function confirmRequest() {
-    setRequested((p) => {
-      const next = { ...p };
-      confirmIds.forEach((id) => (next[id] = true));
-      return next;
-    });
-    setChecked((p) => {
-      const next = { ...p };
-      confirmIds.forEach((id) => (next[id] = false));
-      return next;
-    });
-    setConfirmIds([]);
+  // 정리 큐에 담기 — 서버가 소유권·멱등·actionType(연결 해제/삭제)을 판정한다.
+  //   담긴 계정은 회복 투영의 표적이 되어 "정리하면 여기까지" 도착점이 그만큼 올라간다.
+  async function confirmRequest() {
+    if (confirmIds.length === 0) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/cleanup/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountIds: confirmIds }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        setToast(body?.error ?? '정리 목록에 담지 못했습니다.');
+        return;
+      }
+      const body: { data: CleanupQueueResponse } = await res.json();
+      setQueuedIds(
+        new Set(
+          body.data.items
+            .filter((q) => q.status === 'queued' || q.status === 'in_progress')
+            .map((q) => q.accountId),
+        ),
+      );
+      setChecked((p) => {
+        const next = { ...p };
+        confirmIds.forEach((id) => (next[id] = false));
+        return next;
+      });
+
+      // 담기지 못한 건을 조용히 넘기면 "접수됐다"가 거짓이 된다. 실계정이 없어 예시 목록을
+      // 보고 있는 상태에서 담기를 누르면 전부 여기로 잡힌다.
+      if (body.data.queued === 0 && body.data.notFound > 0) {
+        setToast(`담지 못했습니다. 지금 보이는 목록은 예시 데이터입니다(${body.data.notFound}건).`);
+      } else if (body.data.alreadyQueued > 0 && body.data.queued === 0) {
+        setToast('이미 정리 목록에 담겨 있습니다.');
+      } else {
+        setToast(`${body.data.queued}개를 정리 목록에 담았습니다.`);
+      }
+      // 점수 자체는 담는다고 오르지 않는다(정리해야 오른다). 다만 회복 투영이 바뀌므로 재조회한다.
+      await refreshScore();
+    } catch {
+      setToast('네트워크 오류가 발생했습니다.');
+    } finally {
+      setSaving(false);
+      setConfirmIds([]);
+    }
   }
 
   // ── 자가신고 ──
@@ -368,7 +431,7 @@ export default function ScanPage() {
               </thead>
               <tbody>
                 {rows.map((a) => {
-                  const isReq = !!requested[a.id];
+                  const isReq = queuedIds.has(a.id);
                   const selfInput = a.source === 'user_input';
                   return (
                     <tr key={a.id} className={isReq ? 'is-requested' : ''}>
@@ -405,7 +468,7 @@ export default function ScanPage() {
                             정보 입력
                           </button>
                           {isReq ? (
-                            <span className="req-tag">요청됨</span>
+                            <span className="req-tag">담김</span>
                           ) : (
                             <button type="button" className="btn-sm" onClick={() => openSingle(a.id)}>
                               정리
@@ -499,7 +562,7 @@ export default function ScanPage() {
       {selCount > 0 && (
         <div className="action-bar">
           <span className="count">
-            <strong>{selCount}</strong>개 계정 연결 해제 요청
+            <strong>{selCount}</strong>개 계정 정리 요청
           </span>
           <button type="button" className="btn btn-primary" onClick={openBulk}>
             선택 일괄 정리
@@ -605,14 +668,27 @@ export default function ScanPage() {
       {modalCount > 0 && (
         <div className="modal" onClick={(e) => e.target === e.currentTarget && setConfirmIds([])}>
           <div className="modal-box" role="dialog" aria-modal="true" aria-labelledby="scan-confirm-title">
-            <h3 id="scan-confirm-title">{modalCount}개 계정 연결 해제를 요청하시겠어요?</h3>
-            <p>실제 연결 해제 처리는 로드맵 단계입니다. 지금은 요청만 접수됩니다.</p>
+            <h3 id="scan-confirm-title">{modalCount}개 계정 정리를 요청하시겠어요?</h3>
+            <p>
+              실제 연결 해제·삭제 처리는 로드맵 단계입니다. 지금은 정리 목록에 담기며, 계정 정리
+              화면에서 다시 뺄 수 있습니다.
+            </p>
             <div className="modal-actions">
-              <button type="button" className="btn btn-secondary" onClick={() => setConfirmIds([])}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={saving}
+                onClick={() => setConfirmIds([])}
+              >
                 취소
               </button>
-              <button type="button" className="btn btn-primary" onClick={confirmRequest}>
-                요청 접수
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={saving}
+                onClick={() => void confirmRequest()}
+              >
+                {saving ? '접수 중…' : '요청 접수'}
               </button>
             </div>
           </div>
