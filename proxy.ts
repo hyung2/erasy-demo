@@ -13,7 +13,15 @@ export default auth((req) => {
   // 인증됨 → 통과(undefined 반환).
 });
 
-// 인증 보호 대상 앱 라우트. auth 콜백·정적 자원·랜딩(/)·스캔 연출은 제외.
+// 인증 보호 대상 앱 라우트. auth 콜백·정적 자원·랜딩(/)은 제외.
+// /scanning은 연출이던 시절엔 열어 뒀지만 이제 실제 스캔을 시작하는 화면이라 함께 막는다
+// (미인증 상태로 열면 권한 창까지 간 뒤 서버에서 401을 받는 헛걸음이 된다).
 export const config = {
-  matcher: ['/dashboard/:path*', '/scan/:path*', '/breach/:path*', '/cleanup/:path*'],
+  matcher: [
+    '/dashboard/:path*',
+    '/scan/:path*',
+    '/scanning/:path*',
+    '/breach/:path*',
+    '/cleanup/:path*',
+  ],
 };

@@ -105,6 +105,27 @@ async function main() {
     add.status < 300 && list2.data.length === 1 && (s2.data?.coveredCount ?? 0) >= 0,
     `추가 ${add.status} → 목록 ${list2.data.length}건 · 출처 ${list2.data[0]?.source} · 점수 ${s2.data?.score}`,
   );
+
+  // (e·f) 로그인 직후 착지 화면. 예전에는 여기가 연출이었다 — 조회 없이 프로그레스만 돌고
+  // "확인된 계정 24개"라고 적었다. 빈 상태로 바뀐 지금 그 화면이 남아 있으면
+  // "스캔했다는데 아무것도 없다"가 된다. 실제 스캔 진입점이 있는지, 옛 연출 문구가
+  // 사라졌는지를 함께 잰다.
+  const anon = await fetch(`${BASE}/scanning`, { redirect: 'manual' });
+  check(
+    'e 온보딩은 로그인 필요',
+    anon.status === 307 || anon.status === 302,
+    `미인증 /scanning = ${anon.status} (권한 창까지 갔다가 401 받는 헛걸음 차단)`,
+  );
+
+  const onboard = await fetch(`${BASE}/scanning`, { headers: { cookie: cookie() } });
+  const html = await onboard.text();
+  const hasScanEntry = html.includes('메일함으로 계정 찾기');
+  const hasStaleTheater = html.includes('계정을 찾는 중') || html.includes('안전도 점수를 산출하고');
+  check(
+    'f 온보딩에 실제 스캔 진입점',
+    onboard.status === 200 && hasScanEntry && !hasStaleTheater,
+    `${onboard.status} · 스캔 진입점 ${hasScanEntry} · 옛 연출 문구 잔존 ${hasStaleTheater}`,
+  );
 }
 
 main()

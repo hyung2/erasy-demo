@@ -192,10 +192,19 @@ export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
 
       {data && (
         <div style={{ marginTop: 16 }}>
-          <p className="status safe" role="status">
-            {data.hits.length}개 서비스를 찾았습니다 — 몰랐던 계정 {data.discoveredCount}개 추가 ·
-            활동일 {data.updatedCount}개 갱신
-          </p>
+          {/* 0건도 결과다. "못 찾았다"로 끝내면 처음 온 사람은 여기서 막힌다 —
+              찾지 못한 이유와 다음 걸음을 함께 말한다. */}
+          {data.hits.length === 0 ? (
+            <p className="status" role="status">
+              가입·인증 메일을 찾지 못했습니다. 메일을 지웠거나 다른 주소로 가입했을 수 있어요 —
+              계정 목록에서 직접 추가하거나, 소셜 로그인 연결목록을 가져와 채울 수 있습니다.
+            </p>
+          ) : (
+            <p className="status safe" role="status">
+              {data.hits.length}개 서비스를 찾았습니다 — 몰랐던 계정 {data.discoveredCount}개 추가 ·
+              활동일 {data.updatedCount}개 갱신
+            </p>
+          )}
 
           <ul className="scan-hits">
             {data.hits.map((hit) => (

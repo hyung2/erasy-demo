@@ -313,9 +313,20 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <button type="button" className="btn btn-primary" onClick={() => setGuideOpen(true)}>
-          점수 올리는 법
-        </button>
+        {nothingToMeasure ? (
+          /* 잴 것이 없는 사람에게 "점수 올리는 법"은 다음 걸음이 아니다. 찾는 것이 먼저다. */
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => router.push('/scanning')}
+          >
+            메일함에서 계정 찾기
+          </button>
+        ) : (
+          <button type="button" className="btn btn-primary" onClick={() => setGuideOpen(true)}>
+            점수 올리는 법
+          </button>
+        )}
       </section>
 
       {/* 4축 안전 진단(유출·방치·위생·위협) — 미측정 축은 정직하게 "확인 불가" */}
