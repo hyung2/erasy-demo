@@ -166,14 +166,17 @@ export default function ScanPage() {
   const socialCount = accounts.filter((a) => a.category === 'social').length;
   const overseasCount = accounts.filter((a) => a.category === 'overseas').length;
 
-  // 확인 소스 = 실제로 계정을 데려온 출처의 가짓수. 카탈로그·전체 서비스 대비 몇 %를
-  // 찾았는지는 분모를 모르니 말할 수 없고(제출 정본 사업계획서 2-2 나), 대신 "몇 건을
-  // 어느 경로로 확인했는지"만 적는다. 시드 폴백은 발견이 아니라 예시라 그대로 밝힌다.
-  const foundSources = useMemo(
-    () => [...new Set(accounts.map((a) => a.source))],
-    [accounts],
-  );
-  const seedOnly = foundSources.length > 0 && foundSources.every((s) => s === 'seed');
+  // 발견 = 실제로 찾아낸 계정만. 데모 시드는 우리가 심어 둔 예시이지 발견이 아니므로
+  // 건수에서도 소스 가짓수에서도 뺀다. 섞여 있으면 몇 건이 예시인지 그대로 밝힌다.
+  // 카탈로그·전체 서비스 대비 몇 %인지는 분모를 모르니 말하지 않는다(제출 정본 2-2 나).
+  const { foundCount, foundSources, sampleCount } = useMemo(() => {
+    const real = accounts.filter((a) => a.source !== 'seed');
+    return {
+      foundCount: real.length,
+      foundSources: [...new Set(real.map((a) => a.source))],
+      sampleCount: accounts.length - real.length,
+    };
+  }, [accounts]);
 
   // 필터 → 위험도 정렬(DTO risk 필드 사용, 하드코딩 금지). 동률은 미사용 오래된 순.
   const rows = useMemo(
@@ -357,14 +360,17 @@ export default function ScanPage() {
 
       {/* 발견 배지 — 게이지·커버리지 %가 아니다(08-04에 폐기). 실측 건수와 확인 경로만 적는다. */}
       {loadState === 'ready' && accounts.length > 0 && (
-        <div className={`source-badge${seedOnly ? ' is-sample' : ''}`}>
+        <div className={`source-badge${foundCount === 0 ? ' is-sample' : ''}`}>
           <span className="source-badge-main">
-            발견 <strong>{accounts.length}</strong>건 · 확인 소스{' '}
+            발견 <strong>{foundCount}</strong>건 · 확인 소스{' '}
             <strong>{foundSources.length}</strong>개
           </span>
           <span className="source-badge-list">
-            {foundSources.map((s) => SOURCE_LABEL[s]).join(' · ')}
-            {seedOnly ? ' — 아직 실계정을 찾지 못해 예시로 보여드립니다' : ''}
+            {foundCount === 0
+              ? '아직 실제로 찾은 계정이 없어 예시로 보여드립니다'
+              : `${foundSources.map((s) => SOURCE_LABEL[s]).join(' · ')}${
+                  sampleCount > 0 ? ` · 목록에 예시 ${sampleCount}건 포함` : ''
+                }`}
           </span>
         </div>
       )}
