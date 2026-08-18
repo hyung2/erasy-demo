@@ -64,7 +64,7 @@ export async function buildActivityFeed(
         account: { select: { name: true } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 20,
+      take: 100, // 배치로 접으므로 넉넉히 읽는다 — 20건 일괄 담기가 한 줄이 된다
     }),
     db.breach.findMany({
       where: { userId, resolved: false },
@@ -119,27 +119,49 @@ export async function buildActivityFeed(
   }
 
   // 정리 접수·완료 — 접수는 "담았다"이지 "끝냈다"가 아니라서 문구를 나눈다.
+  // 일괄 담기가 기본이라 한 번에 20건이 들어온다. 개별로 늘어놓으면 피드가 그 한 동작으로
+  // 도배돼 정작 무엇을 찾았는지가 밀려난다 — 같은 배치는 한 줄로 접는다.
+  const queueBatches = new Map<number, { at: Date; names: string[] }>();
+  const doneBatches = new Map<number, { at: Date; names: string[] }>();
   for (const r of requests) {
+    const qb = Math.floor(r.createdAt.getTime() / BATCH_WINDOW_MS);
+    const q = queueBatches.get(qb);
+    if (q) q.names.push(r.account.name);
+    else queueBatches.set(qb, { at: r.createdAt, names: [r.account.name] });
+
+    if (r.completedAt) {
+      const db_ = Math.floor(r.completedAt.getTime() / BATCH_WINDOW_MS);
+      const d = doneBatches.get(db_);
+      if (d) d.names.push(r.account.name);
+      else doneBatches.set(db_, { at: r.completedAt, names: [r.account.name] });
+    }
+  }
+
+  /** 한 줄에 이름을 다 나열하면 읽히지 않는다 — 두 개까지만 적고 나머지는 수로 말한다. */
+  const summarize = (names: string[]) =>
+    names.length <= 2 ? names.join(' · ') : `${names.slice(0, 2).join(' · ')} 외 ${names.length - 2}개`;
+
+  for (const [bucket, b] of queueBatches) {
     rows.push({
-      at: r.createdAt,
+      at: b.at,
       item: {
-        id: `queued:${r.id}`,
+        id: `queued:${bucket}`,
         type: 'recleanup',
-        message: `${r.account.name} 정리를 목록에 담았어요`,
+        message: `${summarize(b.names)} 정리를 목록에 담았어요`,
         tone: 'neutral',
       },
     });
-    if (r.completedAt) {
-      rows.push({
-        at: r.completedAt,
-        item: {
-          id: `done:${r.id}`,
-          type: 'recleanup',
-          message: `${r.account.name} 정리를 끝냈어요`,
-          tone: 'success',
-        },
-      });
-    }
+  }
+  for (const [bucket, b] of doneBatches) {
+    rows.push({
+      at: b.at,
+      item: {
+        id: `done:${bucket}`,
+        type: 'recleanup',
+        message: `${summarize(b.names)} 정리를 끝냈어요`,
+        tone: 'success',
+      },
+    });
   }
 
   const now = new Date();
