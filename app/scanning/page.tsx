@@ -40,6 +40,8 @@ function ScanningInner() {
         {/* 실제 스캔 컴포넌트. 권한 동의·진행·결과·실패를 모두 이 안에서 사실대로 말한다. */}
         <GmailScan onApplied={() => setApplied(true)} />
 
+        {/* 메일 스캔이 유일한 입구가 되면, 구글 권한 창을 넘지 못한 사람은 제품을 아예
+            못 본다. 다른 경로를 같은 자리에 두어 어디로든 시작할 수 있게 한다. */}
         <div className="onboard-actions">
           <button
             type="button"
@@ -48,11 +50,20 @@ function ScanningInner() {
           >
             {applied ? demo.scanning.goInventory : demo.scanning.skip}
           </button>
+          {!applied && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => router.replace('/scan#connection-import')}
+            >
+              다른 방법으로 채우기
+            </button>
+          )}
         </div>
 
         <p className="auth-eyebrow">
-          메일함에서 못 찾은 계정은 계정 목록에서 직접 추가하거나, 소셜 로그인 연결목록을
-          가져와 채울 수 있습니다.
+          메일함을 쓰지 않아도 됩니다. 소셜 로그인 연결목록을 붙여넣거나, 아는 계정을 직접
+          추가해서 시작할 수 있어요.
         </p>
       </div>
     </div>

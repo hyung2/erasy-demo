@@ -180,6 +180,20 @@ export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
         주소에서 온 메일만 셉니다.
       </p>
 
+      {/* 구글 권한 창에 "확인되지 않은 앱" 경고가 뜬다. 아직 구글 앱 검증을 받지 않았기
+          때문이고, 민감 권한이라 검증에 몇 주가 걸린다. 미리 말하지 않으면 처음 보는 사람은
+          그 화면에서 창을 닫는다 — 놀라서 닫는 것과 알고 넘어가는 것은 다르다. */}
+      <div className="consent-notice">
+        <p className="consent-notice-title">권한 창에서 경고가 보일 수 있어요</p>
+        <p>
+          아직 구글 앱 검증을 받지 않아 <strong>&ldquo;Google에서 확인하지 않은 앱&rdquo;</strong>{' '}
+          경고가 표시됩니다. 계속하시려면 그 화면에서 <strong>고급</strong> →{' '}
+          <strong>Erasy(안전하지 않음)으로 이동</strong>을 눌러 주세요. 요청하는 권한은{' '}
+          <strong>메일 읽기 전용</strong>이고, 검색은 구글 서버에서 이뤄져 메일 내용은 우리 서버로
+          오지 않습니다.
+        </p>
+      </div>
+
       <button type="button" className="btn btn-primary" onClick={runScan} disabled={pending}>
         {pending ? '메일함 확인 중…' : 'Gmail로 계정 찾기'}
       </button>

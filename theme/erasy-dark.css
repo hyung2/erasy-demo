@@ -1404,6 +1404,25 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 .btn-google:hover { background: #f1f3f4; }
 .auth-eyebrow { color: var(--text-mute); font-size: 0.8125rem; }
 
+/* 구글 권한 창 경고 예고 — 놀라서 닫지 않도록 버튼 바로 위에 둔다 */
+.consent-notice {
+  margin: 14px 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.consent-notice-title {
+  margin-bottom: 4px;
+  color: var(--text);
+  font-weight: 600;
+}
+.consent-notice strong { color: var(--text); }
+
 /* 계정이 하나도 없을 때의 목록 자리 — 안내와 다음 걸음을 함께 둔다 */
 .empty-inventory {
   display: flex;
@@ -1417,9 +1436,11 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 .onboard-actions {
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
   margin: 16px 0 8px;
 }
-.onboard-actions .btn { min-width: 200px; }
+.onboard-actions .btn { min-width: 190px; }
 
 /* 발견 확인 박스 — S축 "미인지" 인자를 해제하는 액션. 결과 안내와 시각적으로 분리한다. */
 .ack-box {
