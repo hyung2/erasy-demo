@@ -111,7 +111,33 @@ async function api(path: string, jar: Map<string, string>, init: RequestInit = {
 async function main() {
   const [jarA, jarB] = [await signIn(USERS[0]), await signIn(USERS[1])];
 
-  // A의 계정 인벤토리에서 표적 id를 하나 뽑는다. 가입 시 데모 데이터가 프로비저닝된다.
+  // 가입은 이제 빈 상태로 시작하므로(verify-empty-start), 두 사용자에게 각자의 계정을
+  // 직접 만들어 준 뒤 소유권을 잰다. 남의 것을 만질 수 있는지가 검사 대상이지
+  // 계정이 어디서 왔는지는 상관없다.
+  for (const [jar, names] of [
+    [jarA, ['A의 서비스 1', 'A의 서비스 2', 'A의 서비스 3', 'A의 서비스 4', 'A의 서비스 5']],
+    [jarB, ['B의 서비스 1', 'B의 서비스 2']],
+  ] as const) {
+    for (const name of names) {
+      await api('/api/accounts', jar, { method: 'POST', body: JSON.stringify({ name }) });
+    }
+  }
+
+  // A의 계정에만 위험 신호를 심는다. 신호가 없으면 두 사용자 다 만점이라 "점수가 사용자별로
+  // 계산되는가"를 잴 수 없다 — 갈라지는 값이 있어야 격리를 증명한다.
+  const seedA = (await api('/api/accounts', jarA).then((r) => r.json())) as {
+    data: { id: string }[];
+  };
+  const patched: number[] = [];
+  for (const a of seedA.data.slice(0, 3)) {
+    const r = await api(`/api/accounts/${a.id}`, jarA, {
+      method: 'PATCH',
+      body: JSON.stringify({ passwordReused: true, twoFactorEnabled: false, discovered: true }),
+    });
+    patched.push(r.status);
+  }
+  console.log(`(준비) A 자가신고 PATCH 응답: ${patched.join(',')}`);
+
   const listA = await api('/api/accounts', jarA);
   const bodyA = (await listA.json()) as { data: { id: string; name: string }[] };
   const targetA = bodyA.data[0];
@@ -204,13 +230,15 @@ async function main() {
     body: JSON.stringify({ accountIds: queueB.map((q) => q.accountId) }),
   });
 
+  // 판정은 **점수**로 한다. A에게만 위험 신호를 심었으므로 A가 더 낮아야 한다.
+  // 도달점(회복 투영)은 계정이 몇 건뿐인 검증 픽스처에서 양쪽 다 만점으로 붙어 변별력이 없다.
   const [sA, sB] = [await readScore(jarA), await readScore(jarB)];
-  const recA = sA.data?.recovery?.afterComposite;
-  const recB = sB.data?.recovery?.afterComposite;
+  const scoreA = sA.data?.score;
+  const scoreB = sB.data?.score;
   record(
-    '5. 회복 투영 사용자별 격리',
-    typeof recA === 'number' && typeof recB === 'number' && recA > recB,
-    `B의 큐 ${queueB.length}건을 비운 뒤 — A 도달점 ${recA} / B 도달점 ${recB} (A가 높아야 정상)`,
+    '5. 점수 사용자별 격리',
+    typeof scoreA === 'number' && typeof scoreB === 'number' && scoreA < scoreB,
+    `A(위험 신호 3건) ${scoreA}점·도달점 ${sA.data?.recovery?.afterComposite} / B(신호 없음) ${scoreB}점 — A가 낮아야 정상`,
   );
 
   // 6. 무세션 접근 — 쿠키 없이 같은 요청을 던지면 전부 401이어야 한다.

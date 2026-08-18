@@ -18,7 +18,6 @@ import {
   accounts as dummyAccounts,
   breaches as dummyBreaches,
   deleteRequests as dummyRequests,
-  DEMO_USER_ID,
 } from './dummy-data';
 import { projectRecovery, type RecoveryProjection } from './score-projection';
 
@@ -50,7 +49,10 @@ export type ScoreServiceResult = {
   coverage: number; // 헤드라인 = surface 축 coverage(0~1)
   coveredCount: number;
   totalCount: number;
-  fallback: 'none' | 'demo-user' | 'memory'; // 정직 표기용(어느 데이터로 계산했는지)
+  // 정직 표기용(어느 데이터로 계산했는지). 'empty'는 아직 잴 계정이 없는 상태 —
+  // 예전에는 이 자리에서 시드 사용자 데이터로 폴백했지만, 그러면 처음 들어온 사람이
+  // 남의 계정 24개를 자기 것으로 보게 된다.
+  fallback: 'none' | 'empty' | 'demo-user' | 'memory';
   // ── v2 additive(기존 필드 불변, 신규 필드만 추가) ──
   axes: Record<AxisKey, AxisScore>;
   weakestAxis: AxisKey | null;
@@ -239,17 +241,15 @@ function buildResult(
 
 export async function getScoreForUser(userId: string): Promise<ScoreServiceResult> {
   try {
-    let rows = await queryAccounts(userId);
-    let fallback: ScoreServiceResult['fallback'] = 'none';
-    let effectiveUserId = userId;
+    const rows = await queryAccounts(userId);
 
-    // 실계정 0건 → 시드 유저 폴백(스냅샷 시계열도 시드 유저 것을 이어감 — 데모 연속성).
-    if (rows.length === 0 && userId !== DEMO_USER_ID) {
-      rows = await queryAccounts(DEMO_USER_ID);
-      fallback = 'demo-user';
-      effectiveUserId = DEMO_USER_ID;
+    // 실계정 0건 → 빈 상태. 예전에는 시드 유저 데이터로 폴백했는데, 그러면 방금 가입한
+    // 사람에게 남의 계정 24개가 자기 점수로 표시된다. 아직 아무것도 못 찾은 것은
+    // "측정 불가"이지 "24점"이 아니므로, 화면이 그 사실을 받도록 빈 결과를 돌려준다.
+    // (DB 자체가 죽은 경우는 아래 catch가 따로 받는다 — 장애 무중단은 그대로 유지)
+    if (rows.length === 0) {
+      return buildResult(scoreV2([]), 'empty', 0, null, [], projectRecovery({ rows: [], deleteIdx: [] }));
     }
-    if (rows.length === 0) throw new Error('no accounts in DB');
 
     const engineRows = rows.map(toRowV2);
     const v2 = scoreV2(engineRows);
@@ -263,14 +263,14 @@ export async function getScoreForUser(userId: string): Promise<ScoreServiceResul
       }, []),
     });
     const { delta, trend, trendPoints } = await appendSnapshotAndTrend(
-      effectiveUserId,
+      userId,
       v2.composite ?? 0,
       v2.axes.surface.coverage,
       v2.axes.surface.coveredCount,
       toAxesSnapshot(v2.axes),
     );
 
-    return buildResult(v2, fallback, delta, trend, trendPoints, recovery);
+    return buildResult(v2, 'none', delta, trend, trendPoints, recovery);
   } catch (e) {
     // DB 미연결 → 메모리 폴백(동일 엔진·시드 신호. 스냅샷 불가 → 추이 1점, T 미측정).
     console.warn('[score-service] DB unavailable, memory fallback:', (e as Error).message);

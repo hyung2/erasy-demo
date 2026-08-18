@@ -165,6 +165,10 @@ export default function DashboardPage() {
   const showProjection =
     pendingCleanup > 0 && projectedScore !== null && projectedScore > score;
 
+  // 잴 계정이 하나도 없는 상태. 0점·"위험"으로 때우면 아무것도 모르는 것을 최악으로 단정하는
+  // 셈이라, 점수 자리를 비우고 무엇을 하면 되는지만 말한다.
+  const nothingToMeasure = loadState === 'ready' && inv !== null && inv.total === 0;
+
   const scoreClass = grade === '위험' ? ' is-danger' : grade === '주의' ? ' is-warn' : '';
   const gaugeClass = grade === '양호' ? ' is-safe' : grade === '주의' ? ' is-warn' : ' is-danger';
   const badgeClass = grade === '양호' ? 'badge live' : 'badge warn-badge';
@@ -268,25 +272,29 @@ export default function DashboardPage() {
       {/* 안전도 점수 */}
       <section className="panel score-panel" aria-label="안전도 점수">
         <div className="score-figure">
-          <div className={`score-big${scoreClass}`}>
-            {loadState !== 'ready' ? (
+          <div className={`score-big${nothingToMeasure ? '' : scoreClass}`}>
+            {loadState !== 'ready' || nothingToMeasure ? (
               <span aria-live="polite">—</span>
             ) : (
               <CountUp value={score} />
             )}
             <small>/ 100</small>
           </div>
-          <span className={badgeClass}>등급 {grade}</span>
+          {!nothingToMeasure && <span className={badgeClass}>등급 {grade}</span>}
         </div>
 
         <div className="score-meta">
-          <p className={deltaClass}>
-            {deltaText} <span>직전 대비</span>
-          </p>
+          {!nothingToMeasure && (
+            <p className={deltaClass}>
+              {deltaText} <span>직전 대비</span>
+            </p>
+          )}
           <p className="score-sub">
             {loadState === 'error'
               ? '점수를 불러오지 못했어요. 로그인 후 다시 시도해 주세요.'
-              : scoreSub}
+              : nothingToMeasure
+                ? '아직 찾은 계정이 없어 안전도를 낼 수 없어요. 메일함 스캔으로 시작해 보세요.'
+                : scoreSub}
           </p>
           {/* 담아 둔 정리는 "예정"으로만 말한다. 접수했다고 점수가 오르지는 않는다. */}
           {showProjection && (
@@ -294,13 +302,15 @@ export default function DashboardPage() {
               정리 예정 {pendingCleanup}건 · 끝내면 <strong>{projectedScore}점</strong>
             </p>
           )}
-          <div
-            className={`bar score-gauge${gaugeClass}`}
-            role="img"
-            aria-label={`100점 만점에 ${score}점`}
-          >
-            <i style={{ width: `${score}%` }} />
-          </div>
+          {!nothingToMeasure && (
+            <div
+              className={`bar score-gauge${gaugeClass}`}
+              role="img"
+              aria-label={`100점 만점에 ${score}점`}
+            >
+              <i style={{ width: `${score}%` }} />
+            </div>
+          )}
         </div>
 
         <button type="button" className="btn btn-primary" onClick={() => setGuideOpen(true)}>

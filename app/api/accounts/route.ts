@@ -64,9 +64,12 @@ export async function GET() {
       orderBy: [{ breached: 'desc' }, { lastUsedAt: 'asc' }],
     });
 
-    // 실계정 0건 → 시드 폴백(발견 목록 데모). 실데이터 들어오면 자동 전환.
+    // 실계정 0건 → 빈 목록. 예전에는 시드 24건으로 폴백했는데, 그러면 방금 가입한 사람이
+    // Gmail·카카오톡·토스가 담긴 목록을 자기 계정으로 오해한다(담기 버튼을 눌러야 예시임을
+    // 알게 되는 구조였다). 아직 못 찾은 것은 빈 것이지 24건이 아니다.
+    // DB 자체가 죽은 경우는 아래 catch가 시드로 받는다 — 데모 무중단은 유지.
     if (rows.length === 0) {
-      const body: ApiEnvelope<AccountDTO[]> = { data: seedDTO() };
+      const body: ApiEnvelope<AccountDTO[]> = { data: [] };
       return Response.json(body);
     }
 

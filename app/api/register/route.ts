@@ -1,14 +1,13 @@
 // POST /api/register — 자체 가입(이메일+비밀번호).
 //
-// 구글 로그인과 **같은 결과 상태**로 착지시키는 것이 목적이다: 가입 직후 본인 소유 데모 데이터 24계정이
-// 프로비저닝돼 있고, 이후 진단·정리·결과 화면이 동일하게 동작한다(auth.ts signIn 콜백과 같은 경로).
+// 구글 로그인과 **같은 결과 상태**로 착지시키는 것이 목적이다: 가입 직후 계정 목록은 비어 있고,
+// 스캔으로 찾은 것만 채워진다(auth.ts signIn 콜백과 같은 경로 — 양쪽 다 데모 데이터를 심지 않는다).
 // 세션 발급은 여기서 하지 않는다 — 클라이언트가 가입 성공 후 credentials signIn을 호출한다.
 //
 // 빌드타임 DB 접속 금지 → force-dynamic.
 export const dynamic = 'force-dynamic';
 
 import { prisma } from '@/lib/prisma';
-import { provisionDemoData } from '@/lib/provision-demo';
 import { hashPassword, normalizeEmail, validatePassword } from '@/lib/password';
 
 type RegisterBody = { email?: unknown; password?: unknown; name?: unknown };
@@ -49,20 +48,11 @@ export async function POST(req: Request) {
     }
 
     const passwordHash = await hashPassword(password);
-    const user = await prisma.user.create({
-      data: { email, name, passwordHash },
-      select: { id: true },
-    });
+    await prisma.user.create({ data: { email, name, passwordHash }, select: { id: true } });
 
-    // 구글 첫 로그인과 동일한 프로비저닝. 실패해도 가입 자체는 성공으로 둔다(로그인 후 재시도 경로 존재).
-    try {
-      const p = await provisionDemoData(prisma, user.id, { idPrefix: `u${user.id}` });
-      if (p.provisioned) {
-        console.info(`[register] demo data provisioned: user=${user.id}, accounts=${p.accounts}`);
-      }
-    } catch (e) {
-      console.warn('[register] provision skipped:', (e as Error).message);
-    }
+    // 데모 데이터를 심지 않는다. 가입 직후 계정 24개가 이미 들어차 있으면, 처음 온 사람은
+    // 우리가 만들어 둔 예시를 자기 계정으로 읽는다. 계정은 스스로 찾은 것만 목록에 오른다.
+    // (시연·검증용 프로비저닝은 lib/provision-demo를 스크립트에서 직접 부른다)
 
     return Response.json({ ok: true, data: { email } }, { status: 201 });
   } catch (e) {

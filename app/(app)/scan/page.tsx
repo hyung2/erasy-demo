@@ -445,6 +445,13 @@ export default function ScanPage() {
 
         {loadState === 'error' ? (
           <p className="panel-note">계정을 불러오지 못했어요. 로그인 상태를 확인해 주세요.</p>
+        ) : loadState === 'ready' && accounts.length === 0 ? (
+          /* 빈 목록을 예시로 채우지 않는다. 아직 아무것도 못 찾은 것이 사실이고,
+             다음에 무엇을 하면 되는지만 알려 준다. */
+          <p className="panel-note">
+            아직 찾은 계정이 없어요. 아래 <strong>메일함 스캔</strong>으로 가입 흔적을 찾거나,
+            빠진 계정을 직접 추가할 수 있어요.
+          </p>
         ) : (
           <div className="table-wrap">
             <table className="table">
