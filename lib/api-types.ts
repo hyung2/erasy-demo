@@ -77,7 +77,9 @@ export type RecoveryProjectionDTO = {
 // GET /api/guard — 실시간 가드(알림 + 유출)
 export type AlertDTO = {
   id: string;
-  type: 'breach' | 'score_drop' | 'recleanup';
+  // discovery·acknowledge는 실제 활동 피드를 붙이며 추가(DB AlertType enum과 별개 — 이 세 종류는
+  // Alert 레코드가 아니라 계정·정리 이력에서 파생한다).
+  type: 'breach' | 'score_drop' | 'recleanup' | 'discovery' | 'acknowledge';
   message: string;
   when: string;
   tone: 'success' | 'warning' | 'error' | 'neutral';

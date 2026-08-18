@@ -7,9 +7,11 @@ import { useDemo } from '@/components/DemoStateClient';
 import { CountUp } from '@/components/CountUp';
 import { ScoreBenchmarkChart } from '@/components/ScoreBenchmarkChart';
 import { demo } from '@/content/copy';
-import type { ScoreDTO, AccountDTO, CleanupQueueItemDTO } from '@/lib/api-types';
+import type { ScoreDTO, AccountDTO, CleanupQueueItemDTO, AlertDTO } from '@/lib/api-types';
 import type { AxisKey, ActionType } from '@/lib/score-v2';
-import { activityFeed, peerMonthlyAvg, type FeedItem } from '@/lib/dummy-data';
+// peerMonthlyAvg만 남는다 — 또래 평균은 관측치가 아니라 예시 기준선이고, 화면이 "예시" 배지로
+// 그 사실을 말한다. 활동 피드는 실데이터(/api/guard)로 옮겼다.
+import { peerMonthlyAvg } from '@/lib/dummy-data';
 
 // 요약·분포 수치는 **이 사용자의 실제 인벤토리**(/api/accounts)에서 파생한다.
 // 이전에는 dummy-data의 모듈 상수(accounts.length·breachedCount·overseasCount…)를 그대로 렌더해
@@ -37,7 +39,7 @@ function summarize(list: AccountDTO[]): Inventory {
   };
 }
 
-const dotClass: Record<FeedItem['tone'], string> = {
+const dotClass: Record<AlertDTO['tone'], string> = {
   error: 'is-danger',
   warning: 'is-warn',
   success: 'is-safe',
@@ -88,6 +90,24 @@ export default function DashboardPage() {
   const [inv, setInv] = useState<Inventory | null>(null);
   // 정리 목록에 담아 둔 건수. 헤드라인 점수는 건드리지 않고, "끝내면 몇 점"만 예정으로 알린다.
   const [pendingCleanup, setPendingCleanup] = useState(0);
+  // 활동 피드 — 이 사용자에게 실제로 일어난 일만. 예전에는 dummy를 직접 import해서
+  // 방금 가입한 사람도 "Quora 유출 정황 발견 · 2시간 전"을 자기 이력으로 봤다.
+  const [feed, setFeed] = useState<AlertDTO[] | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/guard')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((body: { data: { alerts: AlertDTO[] } }) => {
+        if (alive) setFeed(body.data.alerts ?? []);
+      })
+      .catch(() => {
+        if (alive) setFeed([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -237,8 +257,11 @@ export default function DashboardPage() {
   const showRecommendations = showDiagnostics && recommendations.length > 0;
 
   // 로그인 후 3.7초 위험 알림 모달: 정리 전(위험 있음)에만·흐름당 1회.
+  // 위험이 0건이면 띄우지 않는다 — 계정을 아직 못 찾은 사람에게 "위험 계정 0개가
+  // 발견됐어요"라고 말을 걸던 자리다(2026-08-18 실측).
   useEffect(() => {
     if (cleaned) return;
+    if (!inv || inv.highRisk === 0) return;
     if (typeof window === 'undefined') return;
     if (sessionStorage.getItem(RISK_ALERT_KEY) === '1') return;
     const t = setTimeout(() => {
@@ -246,7 +269,7 @@ export default function DashboardPage() {
       sessionStorage.setItem(RISK_ALERT_KEY, '1');
     }, 3700);
     return () => clearTimeout(t);
-  }, [cleaned]);
+  }, [cleaned, inv]);
 
   function goScan() {
     setRiskOpen(false);
@@ -487,19 +510,24 @@ export default function DashboardPage() {
         <section className="panel">
           <div className="panel-head">
             <h3>최근 활동</h3>
-            <span className="panel-note">최근 7일</span>
           </div>
-          <ul className="activity">
-            {activityFeed.map((f) => (
-              <li key={f.id}>
-                <span className="act-text">
-                  <i className={`dot ${dotClass[f.tone]}`} aria-hidden="true" />
-                  {f.text}
-                </span>
-                <time>{f.when}</time>
-              </li>
-            ))}
-          </ul>
+          {feed !== null && feed.length === 0 ? (
+            <p className="panel-note">
+              아직 기록된 활동이 없어요. 계정을 찾거나 정리를 담으면 여기에 쌓입니다.
+            </p>
+          ) : (
+            <ul className="activity">
+              {(feed ?? []).map((f) => (
+                <li key={f.id}>
+                  <span className="act-text">
+                    <i className={`dot ${dotClass[f.tone]}`} aria-hidden="true" />
+                    {f.message}
+                  </span>
+                  <time>{f.when}</time>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
 
@@ -582,8 +610,9 @@ export default function DashboardPage() {
         <div className="modal" onClick={(e) => e.target === e.currentTarget && setRiskOpen(false)}>
           <div className="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-risk-title">
             <div className="risk-modal-head">
+              {/* "예시" 배지가 붙어 있었지만 이 수치는 실측(inv.highRisk)이다. 진짜를
+                  예시라고 말하면 신뢰가 반대로 깎인다. */}
               <h3 id="modal-risk-title">{demo.riskAlert.title}</h3>
-              <span className="badge">{demo.riskAlert.badge}</span>
             </div>
             <p className="risk-modal-lead">
               <span className="alert-mark" aria-hidden="true" />

@@ -106,6 +106,20 @@ async function main() {
     `추가 ${add.status} → 목록 ${list2.data.length}건 · 출처 ${list2.data[0]?.source} · 점수 ${s2.data?.score}`,
   );
 
+  // (d2) 알림·유출은 내 것만. 예전에는 /api/guard가 userId를 보지도 않고 dummy를 돌려줘서
+  // 방금 가입한 사람에게 "Quora 2018-12 유출"이 자기 이력으로 떴다.
+  type GuardBody = { data?: { alerts?: unknown[]; breaches?: unknown[] } };
+  const guard = (await fetch(`${BASE}/api/guard`, { headers: { cookie: cookie() } }).then((r) =>
+    r.json(),
+  )) as GuardBody;
+  // 이 시점 사용자는 계정 1개를 방금 직접 추가했다 — 유출은 없고 활동은 그 한 건이 잡혀야 한다.
+  const alerts = guard.data?.alerts ?? [];
+  check(
+    'd2 알림·유출은 내 것만',
+    (guard.data?.breaches ?? []).length === 0 && alerts.length <= 2,
+    `유출 ${(guard.data?.breaches ?? []).length}건(남의 유출 0이어야) · 활동 ${alerts.length}건(직접 추가분만)`,
+  );
+
   // (e·f) 로그인 직후 착지 화면. 예전에는 여기가 연출이었다 — 조회 없이 프로그레스만 돌고
   // "확인된 계정 24개"라고 적었다. 빈 상태로 바뀐 지금 그 화면이 남아 있으면
   // "스캔했다는데 아무것도 없다"가 된다. 실제 스캔 진입점이 있는지, 옛 연출 문구가
