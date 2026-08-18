@@ -1058,6 +1058,25 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 .discovery-anchor strong { color: var(--accent); font-weight: 600; }
 .action-desc { color: var(--text-dim); font-size: 0.8125rem; line-height: 1.55; margin-bottom: 16px; }
 
+/* 발견 배지 — "발견 N건 · 확인 소스 K개". 탐지율 게이지가 아니라 사실 표기다. */
+.source-badge {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.source-badge-main { color: var(--text-dim); font-size: 0.875rem; }
+.source-badge-main strong { color: var(--accent); font-weight: 600; }
+.source-badge-list { color: var(--text-dim); font-size: 0.8125rem; }
+/* 예시 데이터만 있을 때는 강조색을 걷어 실측처럼 보이지 않게 한다. */
+.source-badge.is-sample .source-badge-main strong { color: var(--text); }
+
 /* --- 자가신고·직접추가(T5.4) --- */
 .badge.self-input {
   margin-left: 8px;

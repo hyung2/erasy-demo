@@ -28,6 +28,16 @@ const FILTERS: { key: Filter; label: string }[] = [
 // 발견 삼각형 3경로 노출 순서(간편가입 → 직접가입 → 유출).
 const PATH_ORDER: DiscoveryPath[] = ['provider-linked', 'self-verify', 'breach-lookup'];
 
+// 발견 출처 라벨. 배지에 "무엇이 이 계정을 데려왔는지"를 그대로 적기 위한 사전이며,
+// 화면에 없는 출처는 세지 않는다(탐지율·커버리지 %는 분모를 모르므로 말하지 않는다).
+const SOURCE_LABEL: Record<AccountDTO['source'], string> = {
+  seed: '예시 데이터',
+  user_input: '직접 입력',
+  oauth_linked: '로그인 계정',
+  mail_scan: '메일함 스캔',
+  social_link: '간편가입 연결목록',
+};
+
 // provider → 연결 방식 라벨(AccountDTO는 linkMethod 대신 provider 제공).
 const PROVIDER_LABEL: Record<AccountDTO['provider'], string> = {
   google: '구글 로그인',
@@ -155,6 +165,15 @@ export default function ScanPage() {
 
   const socialCount = accounts.filter((a) => a.category === 'social').length;
   const overseasCount = accounts.filter((a) => a.category === 'overseas').length;
+
+  // 확인 소스 = 실제로 계정을 데려온 출처의 가짓수. 카탈로그·전체 서비스 대비 몇 %를
+  // 찾았는지는 분모를 모르니 말할 수 없고(제출 정본 사업계획서 2-2 나), 대신 "몇 건을
+  // 어느 경로로 확인했는지"만 적는다. 시드 폴백은 발견이 아니라 예시라 그대로 밝힌다.
+  const foundSources = useMemo(
+    () => [...new Set(accounts.map((a) => a.source))],
+    [accounts],
+  );
+  const seedOnly = foundSources.length > 0 && foundSources.every((s) => s === 'seed');
 
   // 필터 → 위험도 정렬(DTO risk 필드 사용, 하드코딩 금지). 동률은 미사용 오래된 순.
   const rows = useMemo(
@@ -335,6 +354,20 @@ export default function ScanPage() {
           </button>
         </div>
       </div>
+
+      {/* 발견 배지 — 게이지·커버리지 %가 아니다(08-04에 폐기). 실측 건수와 확인 경로만 적는다. */}
+      {loadState === 'ready' && accounts.length > 0 && (
+        <div className={`source-badge${seedOnly ? ' is-sample' : ''}`}>
+          <span className="source-badge-main">
+            발견 <strong>{accounts.length}</strong>건 · 확인 소스{' '}
+            <strong>{foundSources.length}</strong>개
+          </span>
+          <span className="source-badge-list">
+            {foundSources.map((s) => SOURCE_LABEL[s]).join(' · ')}
+            {seedOnly ? ' — 아직 실계정을 찾지 못해 예시로 보여드립니다' : ''}
+          </span>
+        </div>
+      )}
 
       <div className="stat-grid cols3">
         <div className="stat">
