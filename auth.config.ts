@@ -16,6 +16,14 @@ export const authConfig = {
       },
     }),
   ],
+  // 세션 수명은 명시한다. Auth.js 기본은 30일인데, 계정 인벤토리를 다루는 화면이
+  // 한 달 내내 열려 있는 쿠키로 열리는 건 이 서비스가 사용자에게 하는 약속과 맞지 않는다.
+  // updateAge=1일이라 쓰는 사람은 갱신되고, 방치된 세션만 7일에 끊긴다.
+  session: {
+    strategy: 'jwt',
+    maxAge: 60 * 60 * 24 * 7,
+    updateAge: 60 * 60 * 24,
+  },
   callbacks: {
     // token.sub = google sub(JWT 전략 기본). 세션에 안정 userId로 노출.
     session({ session, token }) {
