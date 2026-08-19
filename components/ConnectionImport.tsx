@@ -33,12 +33,16 @@ const PROVIDERS: Array<{ id: ImportProvider; label: string; href: string; hint: 
   },
 ];
 
+/** 이번 목록에서 사라진 계정 — 제공사 화면에서 끊고 온 것으로 보이는 후보. */
+type MissingConnection = { accountId: string; name: string };
+
 type ImportResult = {
   provider: ImportProvider;
   submitted: number;
   createdCount: number;
   upgradedCount: number;
   unchangedCount: number;
+  missing: MissingConnection[];
 };
 
 export default function ConnectionImport({ onApplied }: { onApplied?: () => void }) {
@@ -50,6 +54,11 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [flagged, setFlagged] = useState<ParsedConnection[]>([]);
+  /** 사라짐 후보 중 사용자가 "정말 끊었다"고 남겨 둔 것. 기본은 전부 켜 둔다. */
+  const [missingKept, setMissingKept] = useState<Set<string>>(new Set());
+  const [markPending, setMarkPending] = useState(false);
+  /** 정리 완료로 기록한 건수. null = 아직 확인 안 함. */
+  const [markedCount, setMarkedCount] = useState<number | null>(null);
   /** 연결 목록 창을 열어 둔 상태 — 돌아왔을 때 바로 담을 수 있게 안내를 띄운다. */
   const [awaitingReturn, setAwaitingReturn] = useState(false);
   const openedAt = useRef(0);
@@ -118,7 +127,13 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
       const res = await fetch('/api/accounts/import', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ provider, names: selected.map((s) => s.name) }),
+        body: JSON.stringify({
+          provider,
+          names: selected.map((s) => s.name),
+          // 사라짐 판정은 **붙여넣은 원본 전체**로 재야 한다. 담을 목록(selected)으로 재면
+          // 사용자가 "이건 빼자"고 체크만 해제한 서비스가 끊긴 것으로 둔갑한다.
+          allNames: parsed?.items.map((i) => i.name) ?? [],
+        }),
       });
       const json = (await res.json()) as { ok: boolean; data?: ImportResult; error?: string };
       if (!json.ok || !json.data) {
@@ -127,7 +142,10 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
       }
       // 가져온 뒤에 짚어 주기 위해 표시 대상만 남긴다.
       setFlagged(warned.filter((w) => selected.some((s) => s.name === w.name)));
-      setResult(json.data);
+      // missing이 없는 응답(구버전 배포와 섞이는 순간)에도 화면이 죽지 않게 둔다.
+      setResult({ ...json.data, missing: json.data.missing ?? [] });
+      setMissingKept(new Set((json.data.missing ?? []).map((m) => m.accountId)));
+      setMarkedCount(null);
       setText('');
       setExcluded(new Set());
       setShowDetails(false);
@@ -137,6 +155,58 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
     } finally {
       setPending(false);
     }
+  }
+
+  /**
+   * 사라진 계정을 정리 완료로 기록한다.
+   *
+   * 자동으로 하지 않는 이유: 목록을 일부만 복사해 왔을 수 있다. 그 경우 끊지 않은 계정이
+   * 완료로 넘어가 점수가 부풀고, 그건 이 제품이 가장 하면 안 되는 거짓말이다.
+   * 그래서 판정은 서버가 하고, 확정은 사용자가 여기서 한 번 끄덕여야 일어난다.
+   *
+   * actionType이 revoke인 이유: 소셜 연결 목록에서 사라졌다는 건 연결 해제이지 탈퇴가 아니다.
+   * 서비스 계정 자체는 그대로 남아 있을 수 있다.
+   */
+  async function confirmMissing() {
+    const targets = (result?.missing ?? []).filter((m) => missingKept.has(m.accountId));
+    if (targets.length === 0) return;
+    setMarkPending(true);
+    setError(null);
+    try {
+      const results = await Promise.all(
+        targets.map((m) =>
+          fetch('/api/cleanup/mark', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              accountId: m.accountId,
+              actionType: 'revoke',
+              status: 'done',
+            }),
+          }).then((r) => r.ok),
+        ),
+      );
+      const ok = results.filter(Boolean).length;
+      setMarkedCount(ok);
+      // 일부만 성공하면 숨기지 않는다 — 사용자는 몇 개가 반영됐는지 알아야 한다.
+      if (ok < targets.length) {
+        setError(`${targets.length}개 중 ${ok}개만 기록됐습니다. 잠시 후 다시 시도해 주세요.`);
+      }
+      onApplied?.();
+    } catch {
+      setError('정리 완료 기록에 실패했습니다.');
+    } finally {
+      setMarkPending(false);
+    }
+  }
+
+  function toggleMissing(accountId: string) {
+    setMissingKept((prev) => {
+      const next = new Set(prev);
+      if (next.has(accountId)) next.delete(accountId);
+      else next.add(accountId);
+      return next;
+    });
   }
 
   const current = PROVIDERS.find((p) => p.id === provider)!;
@@ -282,6 +352,54 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
             연결 목록에는 마지막 사용일이 없어 활동일은 <strong>미상</strong>으로 담았습니다. 언제
             마지막으로 썼는지는 지어내지 않습니다.
           </p>
+
+          {/* 사라진 항목 확인 — 정리 완료 기록의 유일한 관문. */}
+          {result.missing.length > 0 && markedCount === null && (
+            <div className="revoke-confirm">
+              <p className="status safe" role="status">
+                {result.missing.length}개가 {current.label} 연결 목록에서 사라졌습니다
+              </p>
+              <p className="advice">
+                {current.label}에서 연결을 끊으셨다면 정리 완료로 기록하고 안전도 점수에
+                반영합니다. <strong>목록을 일부만 복사하셨다면</strong> 끊지 않은 항목을 아래에서
+                빼 주세요.
+              </p>
+
+              <ul className="scan-hits">
+                {result.missing.map((m) => (
+                  <li key={m.accountId} className="report-row">
+                    <label
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={missingKept.has(m.accountId)}
+                        onChange={() => toggleMissing(m.accountId)}
+                      />
+                      <span>{m.name}</span>
+                    </label>
+                    <span className="advice">연결 해제</span>
+                  </li>
+                ))}
+              </ul>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={confirmMissing}
+                disabled={markPending || missingKept.size === 0}
+                style={{ marginTop: 8 }}
+              >
+                {markPending ? '기록하는 중…' : `${missingKept.size}개 정리 완료로 표시`}
+              </button>
+            </div>
+          )}
+
+          {markedCount !== null && markedCount > 0 && (
+            <p className="status safe" role="status" style={{ marginTop: 16 }}>
+              {markedCount}개를 정리 완료로 기록했습니다. 안전도 점수에서 이 계정들이 빠집니다.
+            </p>
+          )}
         </div>
       )}
     </section>

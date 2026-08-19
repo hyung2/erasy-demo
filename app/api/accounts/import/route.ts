@@ -10,6 +10,15 @@
 //  - 이름은 플랫폼이 준 사실이다 → 카탈로그에 없어도 저장한다.
 //  - 어느 화면에서 가져왔는지 알므로 **provider를 추측이 아니라 사실로 기록**한다.
 //  - 목록에 마지막 사용일이 없다 → lastUsedAt은 null(미상). 활동 신호를 지어내지 않는다.
+//
+// 사라진 항목도 사실이다(2026-08-19).
+//   여기는 오래도록 목록에 **있는** 것만 봤다. 그런데 사용자가 제공사 화면에서 연결을 끊고
+//   돌아와 다시 붙여넣으면, 끊긴 서비스는 목록에서 빠진 채로 온다. 그 빠짐은 "내가 끊었다"는
+//   자가신고가 아니라 **플랫폼이 준 사실**이다 — 이 라우트가 이름·provider를 사실로 취급하는
+//   근거와 정확히 같다. 그동안은 그걸 unchangedCount로 세고 버렸고, 그래서 정리 완료를
+//   확인할 방법이 자가신고밖에 없었다.
+//   판정은 하되 **확정은 하지 않는다**. 사용자가 목록을 일부만 복사해 오면 끊지 않은 것까지
+//   사라진 것으로 보이기 때문이다. 후보만 돌려주고 확인은 화면에서 받는다(cleanup/mark).
 export const dynamic = 'force-dynamic';
 
 import { prisma } from '@/lib/prisma';
@@ -20,10 +29,56 @@ const PROVIDERS: ImportProvider[] = ['google', 'kakao', 'naver'];
 /** 한 번에 받을 수 있는 상한. 화면에서 사용자가 확인한 목록이라 크게 잡되 무한은 아니다. */
 const MAX_ITEMS = 300;
 
-type ImportRequest = { provider?: unknown; names?: unknown };
+// names = 저장할 확정 목록(사용자가 체크 해제한 항목은 빠져 있다).
+// allNames = 이번에 붙여넣은 **원본 전체**. 사라짐 판정은 반드시 이쪽으로 한다 —
+//   names로 재면 사용자가 "안 담을래"로 체크만 해제한 서비스가 "끊긴 것"으로 둔갑한다.
+//   생략되면 사라짐 판정 자체를 하지 않는다(조용히 잘못 판정하느니 안 한다).
+type ImportRequest = { provider?: unknown; names?: unknown; allNames?: unknown };
 
 function fail(message: string, status: number) {
   return Response.json({ ok: false, error: message }, { status });
+}
+
+/** 이름 대조 정규화 — 표기 흔들림(공백·대소문자) 흡수. 표시는 원문을 유지한다. */
+const key = (s: string) => s.replace(/\s+/g, '').toLowerCase();
+
+type ExistingRow = {
+  id: string;
+  name: string;
+  provider: string;
+  source: string;
+  cleanupRequests: { actionType: string; status: string }[];
+};
+
+/**
+ * 이번 목록에서 사라진 계정 = 연결이 끊긴 것으로 보이는 후보.
+ *
+ * 좁게 잡는다. 넓게 잡으면 안 끊은 계정을 "정리 완료"로 몰아 점수를 부풀리는데,
+ * 그건 이 제품이 가장 하면 안 되는 종류의 거짓말이다.
+ *  - allNames(원본 전체)가 없으면 판정 자체를 하지 않는다.
+ *  - 같은 provider만 본다. 카카오 목록을 붙여넣었다고 구글 연결이 사라진 건 아니다.
+ *  - seed는 제외한다. 예시 데이터는 어느 목록에도 없으니 전부 사라진 것처럼 잡힌다.
+ *  - 이미 정리 완료된 계정은 다시 묻지 않는다.
+ */
+function findMissing(
+  existing: ExistingRow[],
+  provider: string,
+  allNames: string[] | null,
+): Array<{ accountId: string; name: string }> {
+  if (!allNames || allNames.length === 0) return [];
+  const present = new Set(allNames.map(key));
+  return existing
+    .filter(
+      (a) =>
+        a.provider === provider &&
+        a.source !== 'seed' &&
+        !present.has(key(a.name)) &&
+        !a.cleanupRequests.some(
+          (c) =>
+            (c.actionType === 'revoke' || c.actionType === 'delete') && c.status === 'done',
+        ),
+    )
+    .map((a) => ({ accountId: a.id, name: a.name }));
 }
 
 export async function POST(req: Request) {
@@ -32,6 +87,7 @@ export async function POST(req: Request) {
 
   let provider: ImportProvider;
   let names: string[];
+  let allNames: string[] | null = null;
   try {
     const body = (await req.json()) as ImportRequest;
     if (typeof body.provider !== 'string' || !PROVIDERS.includes(body.provider as ImportProvider)) {
@@ -47,6 +103,13 @@ export async function POST(req: Request) {
 
     if (names.length === 0) return fail('가져올 항목을 하나 이상 선택해 주세요.', 400);
     if (names.length > MAX_ITEMS) return fail(`한 번에 ${MAX_ITEMS}개까지 가져올 수 있습니다.`, 400);
+
+    if (Array.isArray(body.allNames)) {
+      allNames = body.allNames
+        .filter((n): n is string => typeof n === 'string')
+        .map((n) => n.trim())
+        .filter((n) => n.length > 0);
+    }
   } catch {
     return fail('요청 형식이 올바르지 않습니다.', 400);
   }
@@ -54,9 +117,15 @@ export async function POST(req: Request) {
   try {
     const existing = await prisma.account.findMany({
       where: { userId: sessionUser.userId },
-      select: { id: true, name: true, provider: true, source: true },
+      select: {
+        id: true,
+        name: true,
+        provider: true,
+        source: true,
+        // 이미 정리 완료된 계정을 "또 사라졌다"고 다시 묻지 않기 위해 함께 읽는다.
+        cleanupRequests: { select: { actionType: true, status: true } },
+      },
     });
-    const key = (s: string) => s.replace(/\s+/g, '').toLowerCase();
     const byName = new Map(existing.map((a) => [key(a.name), a]));
 
     const toCreate: string[] = [];
@@ -99,6 +168,8 @@ export async function POST(req: Request) {
         upgradedCount: toUpgrade.length,
         // 이미 같은 이름이 있고 가입 방식도 확정돼 있던 계정 — 아무것도 하지 않았음을 숨기지 않는다
         unchangedCount: names.length - toCreate.length - toUpgrade.length,
+        // 지난번엔 이 provider 목록에 있었는데 이번엔 없는 계정 = 끊긴 것으로 보이는 후보.
+        missing: findMissing(existing, provider, allNames),
       },
     });
   } catch (e) {

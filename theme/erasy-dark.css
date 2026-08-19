@@ -1423,6 +1423,18 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 }
 .consent-notice strong { color: var(--text); }
 
+/* 연결 목록에서 사라진 계정을 정리 완료로 확정하는 자리.
+   consent-notice와 골격은 같고 왼쪽 띠만 safe로 둔다 — 경고가 아니라 확인이다. */
+.revoke-confirm {
+  margin: 16px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--safe);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.revoke-confirm .scan-hits { margin: 10px 0 0; }
+
 /* 계정이 하나도 없을 때의 목록 자리 — 안내와 다음 걸음을 함께 둔다 */
 .empty-inventory {
   display: flex;
