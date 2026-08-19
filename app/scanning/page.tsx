@@ -1,16 +1,23 @@
 'use client';
 
-// 로그인 직후 온보딩. **실제 스캔을 여기서 시작한다.**
+// 로그인 직후 온보딩. **두 경로를 모두 밟게 한다.**
 //
-// 예전에는 이 화면이 연출이었다 — 프로그레스가 3초 돌고 대시보드로 넘어갔고, 조회는
-// 하나도 하지 않았다. 시드 24계정이 깔려 있던 동안에는 그럴듯해 보였지만, 신규 사용자가
-// 빈 상태로 시작하게 되면서 "스캔했다더니 아무것도 없다"가 됐다(2026-08-18).
-// 심사위원이 각자 계정으로 로그인해 보는 경로라, 첫 화면이 거짓말을 하면 안 된다.
+// 처음에는 이 화면이 연출이었다 — 프로그레스가 3.7초 돌고 대시보드로 넘어갔고 조회는 하나도
+// 하지 않았다(2026-08-18에 실제 스캔으로 교체).
+//
+// 그다음 드러난 문제가 이것이다: 메일 스캔은 Gmail만 본다. 네이버·다음 메일을 주로 쓰는
+// 사람은 스캔해도 거의 안 나오고, 빈 화면에서 시작해 빈 화면으로 끝난다. 한국 사용자에게는
+// 오히려 소셜 로그인 연결목록 쪽이 더 많이 잡히는데(플랫폼이 준 사실이라 추정도 아니다),
+// 그게 보조 버튼으로 밀려 있었다.
+//
+// 그래서 두 경로를 같은 무게로 세우고, 각각 끝냈는지를 화면이 기억한다. 어느 쪽을 먼저
+// 하든 상관없고 둘 다 해야 빠지는 영역이 줄어든다.
 //
 // ?return=/scan 이면 완료 후 계정 목록으로 돌아간다(스캔 화면의 "다시 스캔" 왕복).
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import GmailScan from '@/components/GmailScan';
+import ConnectionImport from '@/components/ConnectionImport';
 import { brand, demo } from '@/content/copy';
 
 // 오픈 리다이렉트 방지 — 앱 내부 경로만 허용.
@@ -22,12 +29,14 @@ function ScanningInner() {
   const raw = params.get('return');
   const returnTo = raw && ALLOWED_RETURN.has(raw) ? raw : '/dashboard';
 
-  // 스캔이 한 번이라도 반영되면 다음 걸음을 "찾은 계정 보러 가기"로 바꾼다.
-  const [applied, setApplied] = useState(false);
+  // 두 경로의 완료 여부를 따로 기억한다. 하나만 하고 넘어가면 그 사실이 화면에 남는다.
+  const [mailDone, setMailDone] = useState(false);
+  const [linkDone, setLinkDone] = useState(false);
+  const doneCount = Number(mailDone) + Number(linkDone);
 
   return (
-    <div className="erasy-landing erasy-auth">
-      <div className="auth-box">
+    <div className="erasy-landing erasy-auth is-onboarding">
+      <div className="auth-box onboard-box">
         <div className="auth-brand">
           <span className="logo">{brand.nameEn}</span>
         </div>
@@ -37,33 +46,45 @@ function ScanningInner() {
           <p>{demo.scanning.subtitle}</p>
         </div>
 
-        {/* 실제 스캔 컴포넌트. 권한 동의·진행·결과·실패를 모두 이 안에서 사실대로 말한다. */}
-        <GmailScan onApplied={() => setApplied(true)} />
+        {/* 진행 표시 — 둘 다 해야 빠지는 곳이 줄어든다는 사실을 숫자로 보여준다. */}
+        <div className="onboard-progress" role="status">
+          <span className={mailDone ? 'is-done' : ''}>
+            {mailDone ? '✓' : '1'} 메일함에서 찾기
+          </span>
+          <span className="sep" aria-hidden="true">·</span>
+          <span className={linkDone ? 'is-done' : ''}>
+            {linkDone ? '✓' : '2'} 소셜 연결목록 가져오기
+          </span>
+          <span className="onboard-progress-count">{doneCount}/2 완료</span>
+        </div>
 
-        {/* 메일 스캔이 유일한 입구가 되면, 구글 권한 창을 넘지 못한 사람은 제품을 아예
-            못 본다. 다른 경로를 같은 자리에 두어 어디로든 시작할 수 있게 한다. */}
+        <p className="onboard-guide">
+          두 방법이 찾는 영역이 다릅니다. <strong>메일함</strong>은 가입·인증 메일이 남아 있는
+          서비스를, <strong>소셜 연결목록</strong>은 구글·카카오·네이버로 간편가입한 서비스를
+          잡습니다. <strong>구글 메일을 주로 쓰지 않으신다면 2번이 훨씬 많이 찾습니다.</strong>{' '}
+          둘 다 하시면 빠지는 영역이 줄어듭니다.
+        </p>
+
+        {/* 1 — 메일함. 권한 동의·진행·결과·실패를 컴포넌트가 사실대로 말한다. */}
+        <GmailScan onApplied={() => setMailDone(true)} />
+
+        {/* 2 — 소셜 연결목록. 메일을 쓰지 않아도 되고, 플랫폼이 준 사실이라 추정이 아니다. */}
+        <ConnectionImport onApplied={() => setLinkDone(true)} />
+
         <div className="onboard-actions">
           <button
             type="button"
-            className={applied ? 'btn btn-primary' : 'btn'}
-            onClick={() => router.replace(applied ? '/scan' : returnTo)}
+            className={doneCount > 0 ? 'btn btn-primary' : 'btn'}
+            onClick={() => router.replace(doneCount > 0 ? '/scan' : returnTo)}
           >
-            {applied ? demo.scanning.goInventory : demo.scanning.skip}
+            {doneCount > 0 ? demo.scanning.goInventory : demo.scanning.skip}
           </button>
-          {!applied && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => router.replace('/scan#connection-import')}
-            >
-              다른 방법으로 채우기
-            </button>
-          )}
         </div>
 
         <p className="auth-eyebrow">
-          메일함을 쓰지 않아도 됩니다. 소셜 로그인 연결목록을 붙여넣거나, 아는 계정을 직접
-          추가해서 시작할 수 있어요.
+          {doneCount === 1
+            ? '한 가지만 하셨어요. 나머지 하나도 하시면 못 찾은 계정이 더 나올 수 있습니다.'
+            : '두 방법으로도 못 찾은 계정은 계정 목록에서 직접 추가할 수 있어요.'}
         </p>
       </div>
     </div>

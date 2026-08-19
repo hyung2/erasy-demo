@@ -133,12 +133,16 @@ async function main() {
 
   const onboard = await fetch(`${BASE}/scanning`, { headers: { cookie: cookie() } });
   const html = await onboard.text();
-  const hasScanEntry = html.includes('메일함으로 계정 찾기');
+  // 발견 경로는 **둘 다** 있어야 한다. 메일 스캔은 Gmail만 보므로 네이버·다음 메일을 주로
+  // 쓰는 사람은 그 길로 아무것도 못 찾는다. 소셜 연결목록이 빠지면 그 사용자는 빈 화면에서
+  // 시작해 빈 화면으로 끝난다.
+  const hasMailPath = html.includes('메일함으로 계정 찾기');
+  const hasLinkPath = html.includes('간편가입한 서비스 가져오기');
   const hasStaleTheater = html.includes('계정을 찾는 중') || html.includes('안전도 점수를 산출하고');
   check(
-    'f 온보딩에 실제 스캔 진입점',
-    onboard.status === 200 && hasScanEntry && !hasStaleTheater,
-    `${onboard.status} · 스캔 진입점 ${hasScanEntry} · 옛 연출 문구 잔존 ${hasStaleTheater}`,
+    'f 온보딩에 발견 경로 2종',
+    onboard.status === 200 && hasMailPath && hasLinkPath && !hasStaleTheater,
+    `${onboard.status} · 메일함 ${hasMailPath} · 연결목록 ${hasLinkPath} · 옛 연출 문구 ${hasStaleTheater}`,
   );
 }
 

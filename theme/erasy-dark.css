@@ -1432,6 +1432,33 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
   padding: 8px 0 4px;
 }
 
+/* 온보딩 — 발견 경로 두 개를 나란히 담아야 해서 로그인 박스보다 넓다 */
+.onboard-box { max-width: 620px; }
+
+/* 두 경로의 진행 상태. 하나만 하고 넘어가면 그 사실이 남는다 */
+.onboard-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+}
+.onboard-progress .is-done { color: var(--safe); font-weight: 600; }
+.onboard-progress .sep { color: var(--border-strong); }
+.onboard-progress-count { margin-left: auto; color: var(--text-mute); }
+
+.onboard-guide {
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+}
+.onboard-guide strong { color: var(--text); }
+
 /* 온보딩(로그인 직후) 하단 걸음 — 스캔을 건너뛰거나 결과로 넘어가는 자리 */
 .onboard-actions {
   display: flex;
