@@ -97,11 +97,17 @@ async function importList(
   return json.data;
 }
 
-async function scoreOf(jar: Jar): Promise<number> {
+type CleanedDTO = { completedCount: number; before: number; after: number; gain: number } | null;
+
+async function scoreBody(jar: Jar): Promise<{ score: number; cleaned: CleanedDTO }> {
   const r = (await fetch(`${BASE}/api/score`, { headers: { cookie: cookieOf(jar) } }).then((x) =>
     x.json(),
-  )) as { data?: { score?: number } };
-  return r.data?.score ?? -1;
+  )) as { data?: { score?: number; cleaned?: CleanedDTO } };
+  return { score: r.data?.score ?? -1, cleaned: r.data?.cleaned ?? null };
+}
+
+async function scoreOf(jar: Jar): Promise<number> {
+  return (await scoreBody(jar)).score;
 }
 
 async function mark(jar: Jar, accountId: string, actionType = 'revoke', status = 'done') {
@@ -186,11 +192,11 @@ async function main() {
   const doneBefore = await prisma.cleanupRequest.count({
     where: { userId: userA.id, status: 'done' },
   });
-  const scoreAfterDetect = await scoreOf(jarA);
+  const bodyBefore = await scoreBody(jarA);
   check(
     'c 확인 전에는 확정하지 않는다',
-    doneBefore === 0 && scoreAfterDetect === scoreBefore,
-    `완료 ${doneBefore}건 · 점수 ${scoreBefore} → ${scoreAfterDetect} (사용자 확인 전 불변)`,
+    doneBefore === 0 && bodyBefore.score === scoreBefore && bodyBefore.cleaned === null,
+    `완료 ${doneBefore}건 · 점수 ${scoreBefore} → ${bodyBefore.score} · 실측폭 ${bodyBefore.cleaned === null ? 'null(예상만)' : '있음(오류)'}`,
   );
 
   // (d) 확인 → 완료로 닫힌다
@@ -209,11 +215,26 @@ async function main() {
   );
 
   // (e) 점수가 실제로 오른다 — 회복 규칙 발화
-  const scoreAfter = await scoreOf(jarA);
+  const bodyAfter = await scoreBody(jarA);
+  const scoreAfter = bodyAfter.score;
   check(
     'e 정리 완료가 점수에 반영된다',
     scoreAfter > scoreBefore,
     `${scoreBefore} → ${scoreAfter} (removed 규칙이 발화해야 오른다)`,
+  );
+
+  // (e2) 결과 화면이 "예상"과 "실적"을 구분할 근거를 받는가.
+  //   완료분이 생기기 전까지 화면은 투영만 말할 수 있고(c에서 null 확인), 생긴 뒤에는
+  //   실제로 오른 폭을 말해야 한다. 원페이저 4단계가 요구하는 건 예상이 아니라 이 값이다.
+  //   before는 "정리하지 않았다면의 점수"라 정리 직전 점수(scoreBefore)와 일치해야 한다.
+  check(
+    'e2 실측 상승폭이 내려온다',
+    bodyAfter.cleaned !== null &&
+      bodyAfter.cleaned.completedCount === REVOKED.length &&
+      bodyAfter.cleaned.before === scoreBefore &&
+      bodyAfter.cleaned.after === scoreAfter &&
+      bodyAfter.cleaned.gain === scoreAfter - scoreBefore,
+    `완료 ${bodyAfter.cleaned?.completedCount}건 · ${bodyAfter.cleaned?.before} → ${bodyAfter.cleaned?.after} (+${bodyAfter.cleaned?.gain})`,
   );
 
   // (f) 체크 해제분 오판 방어 — 담지 않기로 한 항목이 "끊긴 것"이 되면 안 된다.
@@ -248,6 +269,69 @@ async function main() {
     'h 이미 닫은 계정은 다시 묻지 않는다',
     r4.missing.length === 0,
     `사라짐 ${r4.missing.length}건 (완료 처리된 ${REVOKED.length}건이 재등장하면 안 됨)`,
+  );
+
+  // (i) 정리하러 갈 경로가 실제로 해석되는가.
+  //   구현스코프 1장이 F4~F6을 "실 페이지 랜딩"으로 확정했다. 링크가 없으면 사용자는 담아 두고
+  //   갈 곳을 몰라 멈춘다. 반대로 없는 URL을 지어내면 404로 보내 신뢰를 깎는다 — 그래서
+  //   소셜 연결은 검증된 제공사 관리 페이지로, 자체 가입은 카탈로그가 아는 도메인으로만 보낸다.
+  const { destinationFor, siteDomainFor } = await import('../lib/service-links');
+  const social = destinationFor({ name: '피그마', provider: 'google' });
+  const site = destinationFor({ name: 'Netflix', provider: 'manual' });
+  const unknown = destinationFor({ name: '듣도보도못한서비스', provider: 'manual' });
+  check(
+    'i 정리 경로 해석 — 소셜은 제공사, 자체가입은 사이트, 미상은 링크 없음',
+    social?.kind === 'provider' &&
+      social.href.startsWith('https://myaccount.google.com') &&
+      site?.kind === 'site' &&
+      site.href === 'https://netflix.com' &&
+      unknown === null,
+    `소셜 ${social?.href} · 사이트 ${site?.href} · 미상 ${unknown === null ? '링크없음' : '링크생성됨(오류)'}`,
+  );
+  // 메일 발신 전용 도메인은 접속되는 사이트가 아니다 — Facebook은 facebookmail.com만 들고 있다.
+  check(
+    'i2 메일 전용 도메인은 사이트로 쓰지 않는다',
+    siteDomainFor('Facebook') === null && siteDomainFor('Instagram') === 'instagram.com',
+    `Facebook ${siteDomainFor('Facebook')} (null이어야) · Instagram ${siteDomainFor('Instagram')}`,
+  );
+
+  // (j) 화면에서 누르는 완료 경로 — 담기 → mark(done) → 점수 반영까지 한 번 더 훑는다.
+  //   (d)는 사라짐 판정을 거친 revoke만 봤다. 자체 가입 계정의 delete 경로는 이 길로만 닫힌다.
+  const manualAcc = await prisma.account.create({
+    data: {
+      userId: userA.id,
+      name: '탈퇴할서비스',
+      provider: 'manual',
+      category: 'domestic',
+      source: 'user_input',
+      breached: true,
+    },
+    select: { id: true },
+  });
+  await prisma.breach.create({
+    data: {
+      userId: userA.id,
+      accountId: manualAcc.id,
+      service: '탈퇴할서비스',
+      breachDate: new Date('2024-05-01'),
+      exposedFields: ['이메일', '비밀번호'],
+      advice: '탈퇴하세요.',
+      severity: 'high',
+      resolved: false,
+    },
+  });
+  const beforeManual = await scoreOf(jarA);
+  await fetch(`${BASE}/api/cleanup/requests`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: cookieOf(jarA) },
+    body: JSON.stringify({ accountIds: [manualAcc.id] }),
+  });
+  const markRes2 = await mark(jarA, manualAcc.id, 'delete', 'done');
+  const afterManual = await scoreOf(jarA);
+  check(
+    'j 자체가입 계정도 완료로 닫히고 점수에 반영된다',
+    markRes2.ok && afterManual > beforeManual,
+    `mark ${markRes2.status} · 점수 ${beforeManual} → ${afterManual}`,
   );
 }
 

@@ -13,7 +13,12 @@ import Link from 'next/link';
 import { CountUp } from '@/components/CountUp';
 import { targetScore } from '@/lib/dummy-data';
 import { demo } from '@/content/copy';
-import type { ApiEnvelope, ScoreDTO, RecoveryProjectionDTO } from '@/lib/api-types';
+import type {
+  ApiEnvelope,
+  ScoreDTO,
+  RecoveryProjectionDTO,
+  CleanedGainDTO,
+} from '@/lib/api-types';
 import type { AxisKey } from '@/lib/score-v2';
 
 // 축 표시 메타 + 회복 라벨(과장 금지 — 무효화 표현 없음). 라벨은 dashboard 4축과 동일.
@@ -29,7 +34,8 @@ const band = (s: number) => (s >= 80 ? 'is-safe' : s >= 50 ? 'is-warn' : 'is-dan
 type LoadState =
   | { phase: 'loading' }
   | { phase: 'error'; message: string }
-  | { phase: 'ready'; proj: RecoveryProjectionDTO };
+  // cleaned = 이미 끝낸 정리가 실제로 올린 폭. null이면 아직 예상만 말할 수 있다.
+  | { phase: 'ready'; proj: RecoveryProjectionDTO; cleaned: CleanedGainDTO | null };
 
 export default function CleanupResultPage() {
   const [state, setState] = useState<LoadState>({ phase: 'loading' });
@@ -58,7 +64,7 @@ export default function CleanupResultPage() {
           setState({ phase: 'error', message: '결과를 계산하지 못했습니다.' });
           return;
         }
-        setState({ phase: 'ready', proj: recovery });
+        setState({ phase: 'ready', proj: recovery, cleaned: body.data?.cleaned ?? null });
       } catch {
         if (alive) setState({ phase: 'error', message: '네트워크 오류가 발생했습니다.' });
       }
@@ -106,8 +112,11 @@ export default function CleanupResultPage() {
   }
 
   const proj = state.proj;
-  const before = proj.beforeComposite ?? 0;
-  const after = proj.afterComposite ?? before;
+  const cleaned = state.cleaned;
+  // 끝낸 정리가 있으면 실측값이 헤드라인이다. 없으면 예전처럼 투영(예상)을 보여준다.
+  // 둘을 같은 자리에 쓰되 **어느 쪽인지 반드시 말한다** — 예상을 실적으로 읽히게 두지 않는다.
+  const before = cleaned ? cleaned.before : proj.beforeComposite ?? 0;
+  const after = cleaned ? cleaned.after : proj.afterComposite ?? (proj.beforeComposite ?? 0);
   const goalLabel =
     after > targetScore ? '목표 초과 달성' : after === targetScore ? '목표 달성' : '다음 목표';
 
@@ -115,14 +124,18 @@ export default function CleanupResultPage() {
     <>
       <div className="page-head">
         <div className="head-left">
-          <h1>정리 완료</h1>
-          <span className="badge">{demo.cleanup.riseNote}</span>
+          <h1>{cleaned ? '정리 완료' : '정리 예정'}</h1>
+          <span className={cleaned ? 'badge live' : 'badge'}>{cleaned ? '실측' : '예상'}</span>
         </div>
       </div>
 
       {/* 종합 점수 상승 */}
       <section className="panel result-hero" aria-label="안전도 상승 결과">
-        <p className="result-eyebrow">{demo.cleanup.riseLabel}</p>
+        <p className="result-eyebrow">
+          {cleaned
+            ? `정리 완료 ${cleaned.completedCount}건 · 안전도 상승`
+            : '정리를 마치면 도달하는 점수'}
+        </p>
         <div className="result-figure">
           <span className="result-before">{before}</span>
           <span className="result-arrow" aria-hidden="true">
@@ -133,7 +146,11 @@ export default function CleanupResultPage() {
             <small>/ 100</small>
           </span>
         </div>
-        <p className="result-lead">{demo.cleanup.celebrate}</p>
+        <p className="result-lead">
+          {cleaned
+            ? `정리한 계정이 점수에서 빠져 ${cleaned.gain}점 올랐어요`
+            : demo.cleanup.celebrate}
+        </p>
 
         {/* 다음 목표 게이지 */}
         <div className="result-goal">
@@ -199,7 +216,9 @@ export default function CleanupResultPage() {
       </div>
 
       <p className="result-disclaimer">
-        예상 도달 시나리오입니다. 실제 점수는 조치 완료 후 재계산되어 반영됩니다.
+        {cleaned
+          ? `정리를 마친 ${cleaned.completedCount}건이 반영된 실제 점수입니다. 정리하지 않았다면 ${cleaned.before}점이었습니다.`
+          : '아직 끝낸 정리가 없어 예상 도달치를 보여드립니다. 각 서비스에서 정리하고 완료를 표시하면 실제 점수로 바뀝니다.'}
       </p>
     </>
   );

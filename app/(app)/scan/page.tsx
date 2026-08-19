@@ -8,6 +8,7 @@ import { riskLabel, riskClass, type Risk } from '@/lib/dummy-data';
 import { DISCOVERY_PATHS, linksByPath, type DiscoveryPath } from '@/lib/deep-links';
 import GmailScan from '@/components/GmailScan';
 import ConnectionImport from '@/components/ConnectionImport';
+import NextStep from '@/components/NextStep';
 import type {
   AccountDTO,
   LastUsedBucket,
@@ -450,15 +451,17 @@ export default function ScanPage() {
              다음에 무엇을 하면 되는지만 알려 준다. */
           <div className="empty-inventory">
             <p className="panel-note">
-              아직 찾은 계정이 없어요. 메일함에서 가입 흔적을 찾거나, 빠진 계정을 직접 추가할 수
-              있어요.
+              아직 찾은 계정이 없어요. 간편가입한 서비스를 가져오거나, 메일함에서 가입 흔적을
+              찾거나, 빠진 계정을 직접 추가할 수 있어요.
             </p>
             <button
               type="button"
               className="btn btn-primary compact"
-              onClick={() => document.getElementById('gmail-scan')?.scrollIntoView({ behavior: 'smooth' })}
+              onClick={() =>
+                document.getElementById('connection-import')?.scrollIntoView({ behavior: 'smooth' })
+              }
             >
-              메일함에서 계정 찾기
+              간편가입한 서비스 가져오기
             </button>
           </div>
         ) : (
@@ -540,21 +543,23 @@ export default function ScanPage() {
         )}
       </section>
 
-      {/* 발견 삼각형 자동 경로 — 메일함 스캔(T5.6). 아래 수동 3경로보다 먼저 노출한다. */}
-      <div id="gmail-scan">
-        <GmailScan
+      {/* 간편가입 축 — 소셜 연결목록 가져오기. 3사 모두 API 미제공이라 사용자 주도 붙여넣기다.
+          사업계획서 "(다) 단계적 발견 경로"의 1단계(사용자 직접 가져오기)라 앞에 둔다.
+          추가 권한이 필요 없고, 플랫폼이 준 사실이라 추정이 섞이지 않는다. */}
+      <div id="connection-import">
+        <ConnectionImport
           onApplied={() => {
-            // 스캔 결과가 인벤토리·점수에 반영될 수 있으므로 둘 다 다시 읽는다.
             void loadAccounts();
             void refreshScore();
           }}
         />
       </div>
 
-      {/* 간편가입 축 — 소셜 연결목록 가져오기. 3사 모두 API 미제공이라 사용자 주도 붙여넣기다. */}
-      <div id="connection-import">
-        <ConnectionImport
+      {/* 메일함 스캔(T5.6) — 같은 표의 2단계. 민감 scope라 "확인되지 않은 앱" 경고를 지나야 한다. */}
+      <div id="gmail-scan">
+        <GmailScan
           onApplied={() => {
+            // 스캔 결과가 인벤토리·점수에 반영될 수 있으므로 둘 다 다시 읽는다.
             void loadAccounts();
             void refreshScore();
           }}
@@ -612,6 +617,19 @@ export default function ScanPage() {
           </p>
         </div>
       </section>
+
+      {/* 다음 걸음 — 계정을 봤으면 정리로 넘어간다. 담아 둔 게 있으면 그 수를 적는다. */}
+      <NextStep
+        step={3}
+        title="쉽게 지우기"
+        label={queuedIds.size > 0 ? `담은 ${queuedIds.size}개 정리하기` : '정리할 계정 고르기'}
+        note={
+          queuedIds.size > 0
+            ? '정리 목록에 담긴 계정을 확인하고, 각 서비스에서 직접 정리하러 갑니다.'
+            : '위 목록에서 안 쓰는 계정을 골라 담으면 여기서 한 번에 정리합니다.'
+        }
+        href="/cleanup"
+      />
 
       {/* 선택 일괄 정리 액션 바 */}
       {selCount > 0 && (
@@ -725,8 +743,8 @@ export default function ScanPage() {
           <div className="modal-box" role="dialog" aria-modal="true" aria-labelledby="scan-confirm-title">
             <h3 id="scan-confirm-title">{modalCount}개 계정 정리를 요청하시겠어요?</h3>
             <p>
-              실제 연결 해제·삭제 처리는 로드맵 단계입니다. 지금은 정리 목록에 담기며, 계정 정리
-              화면에서 다시 뺄 수 있습니다.
+              이레이지가 대신 해제하거나 탈퇴하지 않습니다. 정리 목록에 담으면 계정 정리 화면에서
+              각 서비스로 이동할 경로가 붙고, 다녀와서 완료를 표시하면 점수에 반영됩니다.
             </p>
             <div className="modal-actions">
               <button

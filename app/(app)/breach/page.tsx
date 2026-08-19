@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ServiceAvatar } from '@/components/ServiceAvatar';
 import { BreachPasswordCheck } from '@/components/BreachPasswordCheck';
+import NextStep from '@/components/NextStep';
 import type { BreachDTO } from '@/lib/api-types';
 
 const sevLabel = { high: '높음', mid: '중간', low: '낮음' } as const;
@@ -118,6 +119,15 @@ export default function BreachPage() {
           ))}
         </>
       )}
+
+      {/* 흐름의 끝 — 관리는 한 번으로 끝나지 않는다. 계정은 다시 늘고 유출도 또 생긴다. */}
+      <NextStep
+        step={2}
+        title="한번에 확인"
+        label="점수 다시 보기"
+        note="계정은 또 생기고 유출도 또 나옵니다. 새 위험이 보이면 여기서 다시 시작하세요."
+        href="/dashboard"
+      />
 
       {/* 안전 조치 가이드 모달 */}
       {guideOpen && (

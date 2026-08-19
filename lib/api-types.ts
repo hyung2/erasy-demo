@@ -63,6 +63,16 @@ export type ScoreDTO = {
   //   결과 화면이 클라이언트에서 시드로 자체 계산하던 것을 대체한다. 계정 수와 무관하게
   //   항상 24→93이 나오던 결함의 수정 경로다(2026-08-04).
   recovery: RecoveryProjectionDTO;
+  // 이미 끝낸 정리가 **실제로** 올린 폭. 투영(recovery)이 "끝내면 여기까지"라면 이건
+  // "끝냈더니 이만큼 올랐다"다. 완료분이 없으면 null이고, 그때 결과 화면은 예상만 말한다.
+  cleaned: CleanedGainDTO | null;
+};
+
+export type CleanedGainDTO = {
+  completedCount: number;
+  before: number; // 정리하지 않았다면의 점수(완료 표시를 되돌려 같은 엔진으로 재계산)
+  after: number;
+  gain: number;
 };
 
 // 회복 투영 DTO. score-projection의 RecoveryProjection과 동형(직렬화 가능 필드만).

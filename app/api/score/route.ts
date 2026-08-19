@@ -32,6 +32,8 @@ export async function GET() {
     expectedGains: result.expectedGains,
     // 결과 화면이 쓰는 투영. 점수와 같은 rows·같은 요청에서 나오므로 두 화면의 출발점이 일치한다.
     recovery: result.recovery,
+    // 이미 끝낸 정리가 실제로 올린 폭. null이면 아직 완료분이 없어 예상만 말할 수 있다.
+    cleaned: result.cleaned,
   };
 
   const body: ApiEnvelope<ScoreDTO> = { data };

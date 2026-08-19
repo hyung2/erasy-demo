@@ -48,28 +48,32 @@ function ScanningInner() {
 
         {/* 진행 표시 — 둘 다 해야 빠지는 곳이 줄어든다는 사실을 숫자로 보여준다. */}
         <div className="onboard-progress" role="status">
-          <span className={mailDone ? 'is-done' : ''}>
-            {mailDone ? '✓' : '1'} 메일함에서 찾기
+          <span className={linkDone ? 'is-done' : ''}>
+            {linkDone ? '✓' : '1'} 소셜 연결목록 가져오기
           </span>
           <span className="sep" aria-hidden="true">·</span>
-          <span className={linkDone ? 'is-done' : ''}>
-            {linkDone ? '✓' : '2'} 소셜 연결목록 가져오기
+          <span className={mailDone ? 'is-done' : ''}>
+            {mailDone ? '✓' : '2'} 메일함에서 찾기
           </span>
           <span className="onboard-progress-count">{doneCount}/2 완료</span>
         </div>
 
         <p className="onboard-guide">
-          두 방법이 찾는 영역이 다릅니다. <strong>메일함</strong>은 가입·인증 메일이 남아 있는
-          서비스를, <strong>소셜 연결목록</strong>은 구글·카카오·네이버로 간편가입한 서비스를
-          잡습니다. <strong>구글 메일을 주로 쓰지 않으신다면 2번이 훨씬 많이 찾습니다.</strong>{' '}
-          둘 다 하시면 빠지는 영역이 줄어듭니다.
+          두 방법이 찾는 영역이 다릅니다. <strong>소셜 연결목록</strong>은 구글·카카오·네이버로
+          간편가입한 서비스를 잡고, 플랫폼이 준 사실이라 추정이 없습니다.{' '}
+          <strong>메일함</strong>은 가입·인증 메일이 남아 있는 서비스를 찾습니다.{' '}
+          <strong>구글 메일을 주로 쓰지 않으신다면 1번이 훨씬 많이 찾습니다.</strong> 둘 다 하시면
+          빠지는 영역이 줄어듭니다.
         </p>
 
-        {/* 1 — 메일함. 권한 동의·진행·결과·실패를 컴포넌트가 사실대로 말한다. */}
-        <GmailScan onApplied={() => setMailDone(true)} />
-
-        {/* 2 — 소셜 연결목록. 메일을 쓰지 않아도 되고, 플랫폼이 준 사실이라 추정이 아니다. */}
+        {/* 1 — 소셜 연결목록. 추가 권한이 필요 없고 플랫폼이 준 사실이라 추정이 아니다.
+            사업계획서 "(다) 단계적 발견 경로"가 사용자 직접 가져오기를 1단계로, 메일 자동 분석을
+            CASA 통과가 필요한 2단계로 못박았다. 화면 순서를 그 단계와 맞춘다. */}
         <ConnectionImport onApplied={() => setLinkDone(true)} />
+
+        {/* 2 — 메일함. 민감 scope(gmail.readonly)라 "확인되지 않은 앱" 경고를 지나야 한다.
+            첫 관문에 두면 들어오지도 못하고 돌아서는 사람이 생긴다. */}
+        <GmailScan onApplied={() => setMailDone(true)} />
 
         <div className="onboard-actions">
           <button

@@ -60,6 +60,14 @@ export type ScoreServiceResult = {
   // 회복 투영 — 이 사용자의 실제 계정·정리 큐로 계산한다. 결과 화면(/cleanup/result)이
   // 시드로 자체 계산하던 것을 대체한다(그 경로는 계정 수와 무관하게 항상 24→93이었다).
   recovery: RecoveryProjection;
+  // 이미 끝낸 정리가 실제로 올린 폭. 완료분이 없으면 null — 그때는 결과 화면이 투영(예상)만
+  // 말한다. 원페이저 4단계("내가 뭘 고쳤는지를 숫자로")가 요구하는 건 예상이 아니라 이 값이다.
+  cleaned: {
+    completedCount: number;
+    before: number; // 정리하지 않았다면의 점수
+    after: number; // 지금 점수
+    gain: number;
+  } | null;
 };
 
 type DbAccountRow = Awaited<ReturnType<typeof queryAccounts>>[number];
@@ -219,6 +227,7 @@ function buildResult(
   trend: number[] | null,
   trendPoints: TrendPoint[],
   recovery: RecoveryProjection,
+  cleaned: ScoreServiceResult['cleaned'] = null,
 ): ScoreServiceResult {
   const surface = v2.axes.surface;
   const score = v2.composite ?? 0;
@@ -236,7 +245,42 @@ function buildResult(
     weakestAxis: v2.weakestAxis,
     expectedGains: v2.expectedGains,
     recovery,
+    cleaned,
   };
+}
+
+/**
+ * 이미 끝낸 정리가 점수를 **실제로** 얼마나 올렸는가.
+ *
+ * 결과 화면은 오래도록 투영(예상 도달치)만 보여줬다. 완료로 갈 길이 없었으니 그럴 수밖에
+ * 없었는데, 이제 정리를 닫을 수 있으므로 "예상"과 "실제로 오른 폭"을 구분해야 한다.
+ * 원페이저 4단계가 요구하는 것은 예상이 아니라 **"내가 뭘 고쳤는지를 숫자로"**다.
+ *
+ * 재는 법: 완료 표시를 없던 일로 되돌린 행으로 같은 엔진을 한 번 더 돌린다. 그 값이
+ * "정리하지 않았다면의 점수"이고, 현재 점수와의 차이가 실제 상승분이다. 스냅샷 두 점을 빼는
+ * 방식은 그 사이에 계정이 늘거나 유출이 새로 잡혀도 정리 덕으로 계상돼 과대평가가 된다.
+ */
+function computeCleaned(
+  rows: DbAccountRow[],
+  engineRows: ScoreRowV2[],
+  after: number,
+): ScoreServiceResult['cleaned'] {
+  const completed = rows.filter((r) =>
+    r.cleanupRequests.some(
+      (c) =>
+        (c.actionType === 'delete' || c.actionType === 'revoke') && c.status === 'done',
+    ),
+  ).length;
+  if (completed === 0) return null;
+
+  const asIfUncleaned = engineRows.map((r) => ({
+    ...r,
+    removed: false,
+    passwordChanged: false,
+    sessionsCleared: false,
+  }));
+  const before = scoreV2(asIfUncleaned).composite ?? 0;
+  return { completedCount: completed, before, after, gain: after - before };
 }
 
 export async function getScoreForUser(userId: string): Promise<ScoreServiceResult> {
@@ -270,7 +314,15 @@ export async function getScoreForUser(userId: string): Promise<ScoreServiceResul
       toAxesSnapshot(v2.axes),
     );
 
-    return buildResult(v2, 'none', delta, trend, trendPoints, recovery);
+    return buildResult(
+      v2,
+      'none',
+      delta,
+      trend,
+      trendPoints,
+      recovery,
+      computeCleaned(rows, engineRows, v2.composite ?? 0),
+    );
   } catch (e) {
     // DB 미연결 → 메모리 폴백(동일 엔진·시드 신호. 스냅샷 불가 → 추이 1점, T 미측정).
     console.warn('[score-service] DB unavailable, memory fallback:', (e as Error).message);

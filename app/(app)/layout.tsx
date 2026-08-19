@@ -7,11 +7,15 @@ import { useSession, signOut } from 'next-auth/react';
 import { currentUser } from '@/lib/dummy-data';
 
 // 디자이너 정본 사이드바(순수 클래스 마크업). body.app → .erasy-app wrapper.
+//
+// 순서는 원페이저 v3의 사용 흐름을 따른다 — 확인(2) → 지우기(3) → 관리(5).
+// 예전에는 침해 알림이 정리하기보다 앞에 있어서, 메뉴를 위에서 아래로 훑는 사람이
+// 5단계를 3단계보다 먼저 밟게 돼 있었다.
 const NAV = [
   { label: '대시보드', href: '/dashboard' },
   { label: '계정 스캔', href: '/scan' },
-  { label: '침해 알림', href: '/breach' },
   { label: '정리하기', href: '/cleanup' },
+  { label: '침해 알림', href: '/breach' },
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {

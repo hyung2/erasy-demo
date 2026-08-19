@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation';
 import { ServiceAvatar } from '@/components/ServiceAvatar';
 import { useDemo } from '@/components/DemoStateClient';
 import { primaryLink } from '@/lib/deep-links';
+import { destinationFor } from '@/lib/service-links';
 import type {
   AccountDTO,
   CleanupQueueItemDTO,
@@ -101,6 +102,13 @@ export default function CleanupPage() {
     [queue],
   );
 
+  // 이미 정리를 마친 계정. 담김(PENDING)에서 빠졌다고 선택 가능 목록으로 되돌리면
+  // 방금 끝낸 일을 다시 하라고 권하는 화면이 된다.
+  const doneIds = useMemo(
+    () => new Set(queue.filter((q) => q.status === 'done').map((q) => q.accountId)),
+    [queue],
+  );
+
   // 탭 = 정리 행동. OAuth 연결 계정은 연결 해제, 자체 가입 계정은 삭제 요청이다.
   //   서버의 actionType 파생(provider === 'manual' ? delete : revoke)과 같은 기준이라
   //   화면에서 고른 탭과 서버가 담는 행동이 어긋나지 않는다.
@@ -114,7 +122,7 @@ export default function CleanupPage() {
       });
   }, [accounts, tab]);
 
-  const selectable = rows.filter((a) => !queuedIds.has(a.id));
+  const selectable = rows.filter((a) => !queuedIds.has(a.id) && !doneIds.has(a.id));
   const selCount = selectable.filter((a) => checked[a.id]).length;
   const allSelected = selectable.length > 0 && selCount === selectable.length;
   const queuedInTab = rows.filter((a) => queuedIds.has(a.id)).length;
@@ -181,6 +189,42 @@ export default function CleanupPage() {
       }
       setQueue((prev) => prev.filter((q) => !(q.accountId === id && PENDING.has(q.status))));
       setToast('정리 목록에서 뺐습니다.');
+    } catch {
+      setToast('네트워크 오류가 발생했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * 다녀와서 "정리했어요"를 누르면 요청이 완료로 닫힌다.
+   *
+   * 구현스코프 4장의 수용 기준이 이 순서다 — 액션 클릭 → 실 페이지 이동 → 복귀 후 처리됨
+   * 마킹 → 점수 재계산. 그동안 마킹 자리가 비어 있어서 회복 규칙이 발화하지 못했다.
+   *
+   * actionType은 화면이 아니라 provider가 정한다. 서버의 파생 규칙(manual이면 delete,
+   * 아니면 revoke)과 같은 기준이라 담긴 요청과 닫는 요청이 어긋나지 않는다.
+   */
+  async function markDone(a: AccountDTO) {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/cleanup/mark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: a.id,
+          actionType: a.provider === 'manual' ? 'delete' : 'revoke',
+          status: 'done',
+        }),
+      });
+      if (!res.ok) {
+        setToast('정리 완료로 기록하지 못했습니다.');
+        return;
+      }
+      setQueue((prev) =>
+        prev.map((q) => (q.accountId === a.id ? { ...q, status: 'done' as const } : q)),
+      );
+      setToast(`“${a.name}” 정리 완료 · 안전도에 반영됩니다.`);
     } catch {
       setToast('네트워크 오류가 발생했습니다.');
     } finally {
@@ -256,8 +300,8 @@ export default function CleanupPage() {
 
             <p className="action-desc">
               {tab === 'delete'
-                ? '선택한 계정의 삭제(탈퇴)를 요청 목록에 담습니다. 지금은 요청만 접수되고, 실제 삭제는 로드맵 단계입니다.'
-                : '선택한 연결을 OAuth 표준 방식으로 해제 요청합니다. 지금은 요청만 접수되고, 실제 해제는 로드맵 단계입니다.'}
+                ? '선택한 계정을 정리 목록에 담습니다. 담은 뒤 각 서비스로 이동해 직접 탈퇴하시고, 돌아와 완료를 표시하면 안전도에 반영됩니다.'
+                : '선택한 연결을 정리 목록에 담습니다. 담은 뒤 제공사 연결 관리 페이지에서 직접 끊으시고, 돌아와 완료를 표시하면 안전도에 반영됩니다.'}
             </p>
 
             {rows.length === 0 ? (
@@ -271,23 +315,83 @@ export default function CleanupPage() {
                 <p className="list-label">{actionWord} 대상</p>
                 <div>
                   {rows.map((a) => {
+                    const isDone = doneIds.has(a.id);
                     const isQueued = queuedIds.has(a.id);
+                    const dest = isQueued ? destinationFor(a) : null;
+                    if (isDone) {
+                      return (
+                        <div className="cleanup-item is-done" key={a.id}>
+                          <ServiceAvatar service={a.name} />
+                          <span className="cleanup-info">
+                            <strong>{a.name}</strong>
+                            <span>정리를 마쳤습니다</span>
+                          </span>
+                          <span className="resolved-tag">✓ 정리 완료</span>
+                        </div>
+                      );
+                    }
                     return isQueued ? (
                       <div className="cleanup-item is-requested" key={a.id}>
-                        <ServiceAvatar service={a.name} />
-                        <span className="cleanup-info">
-                          <strong>{a.name}</strong>
-                          <span>{unusedLabel(a)}</span>
-                        </span>
-                        <span className="req-tag">담김</span>
-                        <button
-                          type="button"
-                          className="btn-sm"
-                          disabled={busy}
-                          onClick={() => void removeFromQueue(a.id)}
-                        >
-                          빼기
-                        </button>
+                        <div className="cleanup-item-main">
+                          <ServiceAvatar service={a.name} />
+                          <span className="cleanup-info">
+                            <strong>{a.name}</strong>
+                            <span>{unusedLabel(a)}</span>
+                          </span>
+                          <span className="req-tag">담김</span>
+                          <button
+                            type="button"
+                            className="btn-sm"
+                            disabled={busy}
+                            onClick={() => void removeFromQueue(a.id)}
+                          >
+                            빼기
+                          </button>
+                        </div>
+
+                        {/* 정리하러 보내고, 다녀오면 닫는다. 우리가 대신 처리하지 않는다. */}
+                        <div className="cleanup-go">
+                          {dest ? (
+                            <>
+                              <p className="cleanup-go-note">{dest.note}</p>
+                              <div className="cleanup-go-actions">
+                                <a
+                                  className="btn-sm primary"
+                                  href={dest.href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {dest.label} ↗
+                                </a>
+                                <button
+                                  type="button"
+                                  className="btn-sm"
+                                  disabled={busy}
+                                  onClick={() => void markDone(a)}
+                                >
+                                  정리했어요
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <p className="cleanup-go-note">
+                                이 서비스의 정리 경로는 아직 확인되지 않았습니다. 없는 페이지로
+                                보내지 않으려고 링크를 만들지 않았습니다.
+                              </p>
+                              <div className="cleanup-go-actions">
+                                <button
+                                  type="button"
+                                  className="btn-sm"
+                                  disabled={busy}
+                                  onClick={() => void markDone(a)}
+                                >
+                                  직접 정리했어요
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <label className="cleanup-item" key={a.id}>
@@ -350,7 +454,8 @@ export default function CleanupPage() {
               {selCount}개 계정 {actionWord}를 접수하시겠어요?
             </h3>
             <p>
-              실제 처리는 로드맵 단계입니다. 지금은 정리 목록에 담깁니다. 목록에서 다시 뺄 수 있습니다.
+              이레이지가 대신 해제하거나 탈퇴하지 않습니다. 목록에 담으면 각 항목에 정리하러 갈
+              경로가 붙고, 다녀와서 완료를 표시하면 점수에 반영됩니다. 목록에서 다시 뺄 수 있습니다.
             </p>
             <div className="modal-actions">
               <button
