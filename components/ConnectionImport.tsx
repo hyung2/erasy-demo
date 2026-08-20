@@ -54,6 +54,8 @@ type ImportResult = {
 export default function ConnectionImport({
   onApplied,
   lockedProvider,
+  onNext,
+  nextLabel,
 }: {
   onApplied?: () => void;
   /**
@@ -61,6 +63,12 @@ export default function ConnectionImport({
    * 단계를 나눠 놓고 칩으로 아무 데나 갈 수 있으면 "지금 어디를 하는 중인지"가 흐려진다.
    */
   lockedProvider?: ImportProvider;
+  /**
+   * 담기를 마친 자리에 바로 놓는 다음 걸음. 완료 메시지와 다음 버튼이 떨어져 있으면
+   * "다 됐다"를 확인하고도 어디로 가야 할지 화면 아래를 찾게 된다.
+   */
+  onNext?: () => void;
+  nextLabel?: string;
 }) {
   const [provider, setProvider] = useState<ImportProvider>(lockedProvider ?? 'google');
   const [text, setText] = useState('');
@@ -471,10 +479,24 @@ export default function ConnectionImport({
 
       {result && (
         <div style={{ marginTop: 16 }}>
+          {/* 완료 문구는 "무엇을 했는가"로 시작한다. createdCount만 앞세우면 45개를 담아도
+              전부 기존일 때 "몰랐던 계정 0개를 담았습니다"가 떠서 실패처럼 읽힌다. */}
           <p className="status safe" role="status">
-            몰랐던 계정 {result.createdCount}개를 담았습니다
-            {result.upgradedCount > 0 && ` · 가입 방식 확정 ${result.upgradedCount}개`}
-            {result.unchangedCount > 0 && ` · 이미 있던 계정 ${result.unchangedCount}개`}
+            {result.provider === 'google'
+              ? '구글'
+              : result.provider === 'kakao'
+                ? '카카오'
+                : '네이버'}{' '}
+            연결 서비스 {result.submitted}개를 모두 담았습니다
+          </p>
+          <p className="advice">
+            {result.createdCount > 0 && `새로 찾은 계정 ${result.createdCount}개`}
+            {result.createdCount > 0 && result.upgradedCount > 0 && ' · '}
+            {result.upgradedCount > 0 && `가입 방식 확정 ${result.upgradedCount}개`}
+            {(result.createdCount > 0 || result.upgradedCount > 0) &&
+              result.unchangedCount > 0 &&
+              ' · '}
+            {result.unchangedCount > 0 && `이미 있던 계정 ${result.unchangedCount}개`}
           </p>
 
           {(result.rejectedCount ?? 0) > 0 && (
@@ -495,6 +517,18 @@ export default function ConnectionImport({
             연결 목록에는 마지막 사용일이 없어 활동일은 <strong>미상</strong>으로 담았습니다. 언제
             마지막으로 썼는지는 지어내지 않습니다.
           </p>
+
+          {/* 다음 걸음 — 확인할 것(사라진 항목)이 남아 있으면 그걸 먼저 처리하게 둔다. */}
+          {onNext && result.missing.length === 0 && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={onNext}
+              style={{ marginTop: 12, width: '100%' }}
+            >
+              {nextLabel ?? '다음'}
+            </button>
+          )}
 
           {/* 사라진 항목 확인 — 정리 완료 기록의 유일한 관문. */}
           {result.missing.length > 0 && markedCount === null && (
@@ -542,6 +576,18 @@ export default function ConnectionImport({
             <p className="status safe" role="status" style={{ marginTop: 16 }}>
               {markedCount}개를 정리 완료로 기록했습니다. 안전도 점수에서 이 계정들이 빠집니다.
             </p>
+          )}
+
+          {/* 사라진 항목까지 처리한 뒤의 다음 걸음. 위 버튼과 조건이 겹치지 않는다. */}
+          {onNext && result.missing.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={onNext}
+              style={{ marginTop: 12, width: '100%' }}
+            >
+              {nextLabel ?? '다음'}
+            </button>
           )}
         </div>
       )}

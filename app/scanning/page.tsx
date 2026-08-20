@@ -111,6 +111,10 @@ function ScanningInner() {
             key={step.id}
             lockedProvider={step.id}
             onApplied={() => setApplied((p) => ({ ...p, [step.id]: true }))}
+            onNext={goNext}
+            nextLabel={
+              isLast ? '찾은 계정 모두 보기' : `다음 · ${STEPS[index + 1].label} 찾기`
+            }
           />
         )}
 
