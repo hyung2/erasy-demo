@@ -344,7 +344,8 @@ export default function ScanPage() {
           <h1>계정 스캔</h1>
         </div>
         <div className="head-right">
-          {score !== null && (
+          {/* 잴 계정이 없으면 표기하지 않는다 — 0점 단정 금지, 대시보드 nothingToMeasure와 같은 기준(인벤토리 0건). */}
+          {score !== null && accounts.length > 0 && (
             <span className="head-meta">
               현재 안전도 <strong>{score}</strong>점
             </span>

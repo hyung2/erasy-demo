@@ -283,9 +283,6 @@ export default function DashboardPage() {
           <h1>대시보드</h1>
         </div>
         <div className="head-right">
-          <span className="head-meta">
-            마지막 스캔 <time dateTime="2026-07-08">어제 21:04</time>
-          </span>
           <Link href="/scan" className="btn btn-primary compact">
             다시 스캔
           </Link>
