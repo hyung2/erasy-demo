@@ -50,10 +50,13 @@ const PROVIDERS = {
   naver: {
     label: '네이버',
     // 이력관리 > 연결된 서비스 관리. 구글·카카오는 링크 목록인데 여기는 표(table)다.
-    // `service_title`은 난독화되지 않은 의미 있는 클래스라 구글의 umngff류보다 오래 산다.
-    // 클래스가 바뀌어도 죽지 않도록 구조 기반 셀렉터를 함께 건다(중복은 이름 단계에서 접힌다).
+    //
+    // 셀렉터를 `service_title` 하나로 좁힌 이유: 처음에 구조 기반 대체 셀렉터(`td.site strong`)를
+    // 함께 걸었더니 **같은 페이지의 로그인 이력 표까지 긁어** 날짜 문자열 22건이 계정으로
+    // 들어왔다(2026-08-20 실측). 넓은 셀렉터는 클래스 변경에는 강하지만 오탐에는 약하고,
+    // 이 제품에서 오탐은 "없는 계정을 있다고 말하는 것"이라 미발견보다 나쁘다.
     urls: ['https://nid.naver.com/internalToken/view/tokenList/pc/ko'],
-    selector: 'strong.service_title, td.site strong',
+    selector: 'strong.service_title',
   },
 };
 
@@ -69,6 +72,19 @@ function supportedProviders() {
  * 셀렉터를 인자로 받는다.
  */
 function extractNames(selector, nameSelector) {
+  // 서비스명으로 볼 수 없는 값 — 셀렉터가 조금만 넓어도 표의 다른 열이 딸려 온다.
+  //   여기서 거르지 않으면 "2026. 04. 10." 같은 날짜가 계정으로 저장되고, 사용자는
+  //   자기가 가입한 적 없는 것을 자기 계정으로 읽는다. 미발견보다 나쁜 실패다.
+  const looksLikeService = (s) => {
+    if (s.length === 0 || s.length > 60) return false;
+    if (/^\d+$/.test(s)) return false; // 순번·건수
+    if (/^\d{4}[.\-/]\s?\d{1,2}[.\-/]/.test(s)) return false; // 날짜
+    if (/^\d+\+$/.test(s)) return false; // 알림 배지(99+)
+    if (/copyright|all rights reserved/i.test(s)) return false; // 푸터
+    if (/^(미상|높음|보통|낮음|정보 입력|정리|상세보기|더보기|전체)/.test(s)) return false;
+    return true;
+  };
+
   const nodes = Array.from(document.querySelectorAll(selector));
   const names = nodes
     .map((el) => {
@@ -78,7 +94,7 @@ function extractNames(selector, nameSelector) {
       const raw = (target?.innerText ?? target?.textContent ?? el.innerText ?? '').trim();
       return raw.split('\n')[0].trim();
     })
-    .filter((s) => s.length > 0 && s.length <= 60);
+    .filter(looksLikeService);
   return Array.from(new Set(names));
 }
 
