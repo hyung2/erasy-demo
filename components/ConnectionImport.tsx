@@ -499,24 +499,38 @@ export default function ConnectionImport({
             {result.unchangedCount > 0 && `이미 있던 계정 ${result.unchangedCount}개`}
           </p>
 
-          {(result.rejectedCount ?? 0) > 0 && (
-            <p className="advice">
-              목록에 섞여 있던 날짜·번호 같은 값 {result.rejectedCount}개는 서비스가 아니라서
-              담지 않았습니다.
-            </p>
-          )}
-
-          {flagged.length > 0 && (
-            <p className="advice">
-              이 중 {flagged.length}개({flagged.map((f) => f.name).join(', ')})는 직접 만든
-              프로젝트로 보입니다. 계정 목록에서 지우시면 점수에서도 빠집니다.
-            </p>
-          )}
-
-          <p className="advice">
-            연결 목록에는 마지막 사용일이 없어 활동일은 <strong>미상</strong>으로 담았습니다. 언제
-            마지막으로 썼는지는 지어내지 않습니다.
-          </p>
+          {/* 담은 결과에 대한 이레이지의 코멘트 — 무엇을 어떻게 판단했는지 사용자에게
+              그대로 말한다. 흩어진 안내 문구를 한 자리에 모아 "왜 이렇게 담겼는지"를
+              읽히게 한다. 규칙에 따른 판단이며, 없는 근거를 만들어 붙이지 않는다. */}
+          <section className="erasy-comment" aria-label="이레이지 코멘트">
+            <span className="erasy-comment-badge">Erasy Comment</span>
+            <ul className="erasy-comment-list">
+              {(result.rejectedCount ?? 0) > 0 && (
+                <li>
+                  목록에 날짜·번호 같은 값이 {result.rejectedCount}개 섞여 있었어요. 서비스가
+                  아니라서 담지 않았습니다.
+                </li>
+              )}
+              {flagged.length > 0 && (
+                <li>
+                  {flagged.map((f) => f.name).join(', ')}
+                  {flagged.length > 1 ? ` 등 ${flagged.length}개는` : '은(는)'} 직접 만드신
+                  프로젝트로 보입니다. 계정 목록에서 지우시면 점수에서도 빠져요.
+                </li>
+              )}
+              {result.unchangedCount > 0 && result.createdCount === 0 && (
+                <li>
+                  이번에는 새로 찾은 계정이 없었어요. {result.unchangedCount}개가 이미 목록에
+                  있던 것이라, 중복으로 담지 않았습니다.
+                </li>
+              )}
+              <li>
+                연결 목록에는 마지막 사용일이 없어 활동일은 <strong>미상</strong>으로
+                담았습니다. 언제 마지막으로 쓰셨는지는 지어내지 않아요 — 직접 알려주시면
+                안전도에 반영됩니다.
+              </li>
+            </ul>
+          </section>
 
           {/* 다음 걸음 — 확인할 것(사라진 항목)이 남아 있으면 그걸 먼저 처리하게 둔다. */}
           {onNext && result.missing.length === 0 && (
