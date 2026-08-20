@@ -42,6 +42,27 @@ function fail(message: string, status: number) {
 /** 이름 대조 정규화 — 표기 흔들림(공백·대소문자) 흡수. 표시는 원문을 유지한다. */
 const key = (s: string) => s.replace(/\s+/g, '').toLowerCase();
 
+/**
+ * 서비스명으로 볼 수 없는 값 — 저장 직전 마지막 관문.
+ *
+ * 왜 서버에 두는가: 목록을 긁어오는 쪽(확장 셀렉터)이 조금만 넓어지면 표의 다른 열이 딸려
+ * 온다. 실제로 네이버에서 로그인 이력 표가 섞여 "2026. 04. 10." 같은 날짜가 계정으로
+ * 저장됐다(2026-08-20). 확장에도 필터를 뒀지만 확장은 사용자가 갱신해야 반영되므로,
+ * 옛 버전이 돌면 그대로 통과한다. 서버는 확장 버전과 무관하게 항상 이 자리에 있다.
+ *
+ * 오탐은 미발견보다 나쁘다 — 사용자가 가입한 적 없는 것을 자기 계정으로 읽게 된다.
+ */
+function looksLikeServiceName(s: string): boolean {
+  if (s.length === 0 || s.length > 60) return false;
+  if (/^\d+$/.test(s)) return false; // 순번·건수
+  if (/^\d+\+$/.test(s)) return false; // 알림 배지(99+)
+  if (/\d{4}\s*[.\-/]\s*\d{1,2}\s*[.\-/]\s*\d{1,2}/.test(s)) return false; // 날짜(2026. 04. 10.)
+  if (/^\d{1,2}\s*[:시]\s*\d{2}/.test(s)) return false; // 시각
+  if (/copyright|all rights reserved/i.test(s)) return false; // 푸터
+  if (/^(미상|높음|보통|낮음|정보 입력|정리|상세보기|더보기|전체|목록)$/.test(s)) return false;
+  return true;
+}
+
 type ExistingRow = {
   id: string;
   name: string;
@@ -88,6 +109,8 @@ export async function POST(req: Request) {
   let provider: ImportProvider;
   let names: string[];
   let allNames: string[] | null = null;
+  /** 서비스명으로 볼 수 없어 저장하지 않은 수 — 화면이 그대로 알린다. */
+  let rejected = 0;
   try {
     const body = (await req.json()) as ImportRequest;
     if (typeof body.provider !== 'string' || !PROVIDERS.includes(body.provider as ImportProvider)) {
@@ -96,10 +119,12 @@ export async function POST(req: Request) {
     provider = body.provider as ImportProvider;
 
     if (!Array.isArray(body.names)) return fail('가져올 목록이 없습니다.', 400);
-    names = body.names
+    const submitted = body.names
       .filter((n): n is string => typeof n === 'string')
-      .map((n) => n.trim())
-      .filter((n) => n.length > 0 && n.length <= 60);
+      .map((n) => n.trim());
+    names = submitted.filter(looksLikeServiceName);
+    // 걸러낸 수를 세어 응답에 담는다. 조용히 버리면 사용자는 "왜 몇 개가 안 들어왔지"만 남는다.
+    rejected = submitted.length - names.length;
 
     if (names.length === 0) return fail('가져올 항목을 하나 이상 선택해 주세요.', 400);
     if (names.length > MAX_ITEMS) return fail(`한 번에 ${MAX_ITEMS}개까지 가져올 수 있습니다.`, 400);
@@ -168,6 +193,8 @@ export async function POST(req: Request) {
         upgradedCount: toUpgrade.length,
         // 이미 같은 이름이 있고 가입 방식도 확정돼 있던 계정 — 아무것도 하지 않았음을 숨기지 않는다
         unchangedCount: names.length - toCreate.length - toUpgrade.length,
+        // 날짜·순번처럼 서비스명이 아닌 값이 섞여 들어와 버린 수. 숨기지 않는다.
+        rejectedCount: rejected,
         // 지난번엔 이 provider 목록에 있었는데 이번엔 없는 계정 = 끊긴 것으로 보이는 후보.
         missing: findMissing(existing, provider, allNames),
       },

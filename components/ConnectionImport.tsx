@@ -43,6 +43,8 @@ type ImportResult = {
   createdCount: number;
   upgradedCount: number;
   unchangedCount: number;
+  /** 서비스명이 아니라 버려진 수(날짜·순번 등). 서버가 마지막 관문에서 거른다. */
+  rejectedCount?: number;
   missing: MissingConnection[];
 };
 
@@ -400,6 +402,13 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
             {result.upgradedCount > 0 && ` · 가입 방식 확정 ${result.upgradedCount}개`}
             {result.unchangedCount > 0 && ` · 이미 있던 계정 ${result.unchangedCount}개`}
           </p>
+
+          {(result.rejectedCount ?? 0) > 0 && (
+            <p className="advice">
+              목록에 섞여 있던 날짜·번호 같은 값 {result.rejectedCount}개는 서비스가 아니라서
+              담지 않았습니다.
+            </p>
+          )}
 
           {flagged.length > 0 && (
             <p className="advice">
