@@ -1491,22 +1491,48 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
   .next-step .btn { width: 100%; }
 }
 
-/* 확장으로 한 번에 가져오는 자리 — 설치된 사람에게만 보인다. */
+/* 원터치 수집 — 확장이 있을 때의 주 동작. 화면에서 가장 큰 자리를 준다.
+   예비 수단(붙여넣기)과 크기가 비슷하면 무엇을 먼저 눌러야 하는지가 사라진다. */
 .ext-collect {
-  margin-bottom: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--safe);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
+  margin-bottom: 14px;
+  padding: 18px;
+  border: 1px solid rgba(var(--safe-rgb), 0.28);
+  border-radius: var(--radius);
+  background: rgba(var(--safe-rgb), 0.06);
+  text-align: center;
+}
+.ext-collect-cta {
+  width: 100%;
+  padding: 15px 20px;
+  font-size: 0.9375rem;
+  font-weight: 600;
 }
 .ext-collect-note {
-  margin-bottom: 10px;
+  margin: 10px 2px 0;
   color: var(--text-dim);
   font-size: 0.8125rem;
   line-height: 1.6;
 }
 .ext-collect-note strong { color: var(--text); }
+
+/* 예비 동작 — 위 버튼이 안 될 때만 여는 자리. 접혀 있고, 눈에 덜 띄어야 한다. */
+.fallback-section {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+.fallback-section > summary {
+  cursor: pointer;
+  color: var(--text-mute);
+  font-size: 0.8125rem;
+  list-style: none;
+}
+.fallback-section > summary::before { content: '▸ '; }
+.fallback-section[open] > summary::before { content: '▾ '; }
+.fallback-section > summary:hover { color: var(--text-dim); }
+.fallback-body { padding-top: 10px; }
+.fallback-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 
 /* 연결 목록에서 사라진 계정을 정리 완료로 확정하는 자리.
    consent-notice와 골격은 같고 왼쪽 띠만 safe로 둔다 — 경고가 아니라 확인이다. */

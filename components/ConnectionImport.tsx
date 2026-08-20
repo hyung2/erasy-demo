@@ -263,6 +263,8 @@ export default function ConnectionImport({
   }
 
   const current = PROVIDERS.find((p) => p.id === provider)!;
+  /** 확장이 이 제공사를 지원하는가 — 주 동작과 예비 수단의 위계가 여기서 갈린다. */
+  const canAutoCollect = extProviders.includes(provider);
 
   return (
     <section className="panel" aria-labelledby="conn-import-title">
@@ -294,62 +296,94 @@ export default function ConnectionImport({
         </div>
       )}
 
-      {/* 확장이 이 제공사를 지원할 때만 한 번에 가져온다. 아니면 블록 자체가 없다. */}
-      {!parsed && extProviders.includes(provider) && (
+      {/* 원터치 — 확장이 이 제공사를 지원할 때의 **주 동작**. 화면에서 가장 크다. */}
+      {!parsed && canAutoCollect && (
         <div className="ext-collect">
-          <p className="ext-collect-note">
-            <strong>확장 프로그램이 연결되어 있습니다.</strong> 버튼을 누르면 {current.label}{' '}
-            연결목록을 자동으로 가져옵니다. 아이디·비밀번호는 읽지 않고, 서비스 이름만
-            가져옵니다.
-          </p>
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary ext-collect-cta"
             onClick={() => void collectWithExtension()}
             disabled={collecting}
           >
-            {collecting ? '가져오는 중…' : '연결목록 한 번에 가져오기'}
+            {collecting ? '가져오는 중…' : `${current.label} 연결목록 한 번에 가져오기`}
           </button>
+          <p className="ext-collect-note">
+            아이디·비밀번호는 읽지 않습니다. 브라우저가 이미 로그인해 둔 화면에서{' '}
+            <strong>서비스 이름만</strong> 가져옵니다.
+          </p>
         </div>
       )}
 
-      {!parsed && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-          <button type="button" className="btn btn-primary" onClick={openProviderPage}>
-            {current.label} 연결 목록 열기
-          </button>
-          <button
-            type="button"
-            className={awaitingReturn ? 'btn btn-primary' : 'btn'}
-            onClick={pasteFromClipboard}
-          >
-            {awaitingReturn ? '복사한 목록 담기' : '복사한 목록 붙여넣기'}
-          </button>
-        </div>
-      )}
-
-      <p className="advice">
-        {awaitingReturn
-          ? '연결 목록에서 전체 선택(Ctrl+A) 후 복사(Ctrl+C)하고 돌아와 "복사한 목록 담기"를 누르세요.'
-          : `${current.hint}에서 목록을 복사해 오면 됩니다.`}
-      </p>
-
-      <details style={{ marginBottom: 8 }}>
-        <summary className="advice" style={{ cursor: 'pointer' }}>
-          직접 붙여넣기
-        </summary>
-        <label className="sr-only" htmlFor="conn-paste">
-          연결 서비스 목록 붙여넣기
-        </label>
-        <textarea
-          id="conn-paste"
-          className="text-input"
-          rows={4}
-          placeholder="복사한 목록을 여기에 붙여넣어도 됩니다."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
-      </details>
+      {/* 수동 경로. 확장이 있으면 접어 두고 "안 될 때"라고 못박는다 — 예비 수단이 주 동작과
+          같은 크기로 나란히 있으면 무엇을 먼저 눌러야 하는지가 사라진다. */}
+      {!parsed &&
+        (canAutoCollect ? (
+          <details className="fallback-section">
+            <summary>자동으로 가져오지 못했다면</summary>
+            <div className="fallback-body">
+              <p className="advice">
+                {awaitingReturn
+                  ? '연결 목록에서 전체 선택(Ctrl+A) 후 복사(Ctrl+C)하고 돌아와 "복사한 목록 담기"를 누르세요.'
+                  : `${current.hint}에서 목록을 복사해 오면 됩니다.`}
+              </p>
+              <div className="fallback-actions">
+                <button type="button" className="btn-sm" onClick={openProviderPage}>
+                  {current.label} 연결 목록 열기 ↗
+                </button>
+                <button
+                  type="button"
+                  className={awaitingReturn ? 'btn-sm primary' : 'btn-sm'}
+                  onClick={pasteFromClipboard}
+                >
+                  {awaitingReturn ? '복사한 목록 담기' : '복사한 목록 붙여넣기'}
+                </button>
+              </div>
+              <label className="sr-only" htmlFor="conn-paste">
+                연결 서비스 목록 붙여넣기
+              </label>
+              <textarea
+                id="conn-paste"
+                className="text-input"
+                rows={4}
+                placeholder="복사한 목록을 여기에 붙여넣어도 됩니다."
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+              />
+            </div>
+          </details>
+        ) : (
+          // 확장이 없으면 붙여넣기가 주 동작이다. 예비로 접어 두면 할 일이 안 보인다.
+          <>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <button type="button" className="btn btn-primary" onClick={openProviderPage}>
+                {current.label} 연결 목록 열기
+              </button>
+              <button
+                type="button"
+                className={awaitingReturn ? 'btn btn-primary' : 'btn'}
+                onClick={pasteFromClipboard}
+              >
+                {awaitingReturn ? '복사한 목록 담기' : '복사한 목록 붙여넣기'}
+              </button>
+            </div>
+            <p className="advice">
+              {awaitingReturn
+                ? '연결 목록에서 전체 선택(Ctrl+A) 후 복사(Ctrl+C)하고 돌아와 "복사한 목록 담기"를 누르세요.'
+                : `${current.hint}에서 목록을 복사해 오면 됩니다.`}
+            </p>
+            <label className="sr-only" htmlFor="conn-paste">
+              연결 서비스 목록 붙여넣기
+            </label>
+            <textarea
+              id="conn-paste"
+              className="text-input"
+              rows={4}
+              placeholder="복사한 목록을 여기에 붙여넣어도 됩니다."
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
+          </>
+        ))}
 
       {parsed && parsed.items.length > 0 && (
         <div style={{ marginTop: 12 }}>
