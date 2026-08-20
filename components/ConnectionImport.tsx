@@ -37,6 +37,9 @@ const PROVIDERS: Array<{ id: ImportProvider; label: string; href: string; hint: 
 /** 이번 목록에서 사라진 계정 — 제공사 화면에서 끊고 온 것으로 보이는 후보. */
 type MissingConnection = { accountId: string; name: string };
 
+/** 찾자마자 펼쳐 두는 항목 수. 숫자만 보고 누르지 않도록 실제 이름을 먼저 보여준다. */
+const PREVIEW_COUNT = 7;
+
 type ImportResult = {
   provider: ImportProvider;
   submitted: number;
@@ -88,6 +91,10 @@ export default function ConnectionImport({
   const isChecked = (item: ParsedConnection) => item.preselected && !excluded.has(item.name);
   const selected = parsed?.items.filter(isChecked) ?? [];
   const warned = parsed?.items.filter((i) => i.warning) ?? [];
+  /** 찾았지만 기본 선택에서 빠진 수 — 화면이 그 차이를 설명해야 한다. */
+  const excludedCount = (parsed?.items.length ?? 0) - selected.length;
+  /** 그중 우리 앱 자신(파서가 preselected=false로 둔 것). 가장 흔한 사유다. */
+  const excludedSelfCount = parsed?.items.filter((i) => !i.preselected).length ?? 0;
 
   function toggle(item: ParsedConnection) {
     setExcluded((prev) => {
@@ -392,6 +399,16 @@ export default function ConnectionImport({
             {parsed.mergedDuplicates > 0 && ` · 중복 ${parsed.mergedDuplicates}건은 하나로 합쳤습니다`}
           </p>
 
+          {/* 찾은 수와 담을 수가 다르면 **왜 다른지** 함께 적는다.
+              "46개 찾았습니다" 밑에 "45개 가져오기"만 있으면 하나가 어디로 샜는지 알 수 없다. */}
+          {excludedCount > 0 && (
+            <p className="advice">
+              이 중 {excludedCount}개는 기본 제외했습니다
+              {excludedSelfCount > 0 && ' — 이레이지 자신은 담을 필요가 없어요'}. 아래에서 다시
+              선택할 수 있습니다.
+            </p>
+          )}
+
           <button
             type="button"
             className="btn btn-primary"
@@ -399,26 +416,24 @@ export default function ConnectionImport({
             disabled={pending || selected.length === 0}
             style={{ marginTop: 8 }}
           >
-            {pending ? '가져오는 중…' : `${selected.length}개 모두 가져오기`}
+            {pending
+              ? '가져오는 중…'
+              : selected.length === parsed.items.length
+                ? `${selected.length}개 모두 가져오기`
+                : `${parsed.items.length}개 중 ${selected.length}개 가져오기`}
           </button>
 
-          <p className="advice" style={{ marginTop: 8 }}>
-            {warned.length > 0
-              ? `직접 만든 프로젝트로 보이는 ${warned.length}개가 섞여 있습니다. 일단 담고, 가져온 뒤에 알려드립니다.`
-              : '가져온 뒤 계정 목록에서 언제든 지울 수 있습니다.'}{' '}
-            <button
-              type="button"
-              className="linklike"
-              onClick={() => setShowDetails((v) => !v)}
-              aria-expanded={showDetails}
-            >
-              {showDetails ? '목록 접기' : '목록 보고 고르기'}
-            </button>
-          </p>
+          {warned.length > 0 && (
+            <p className="advice" style={{ marginTop: 8 }}>
+              직접 만든 프로젝트로 보이는 {warned.length}개가 섞여 있습니다. 일단 담고, 가져온
+              뒤에 알려드립니다.
+            </p>
+          )}
 
-          {showDetails && (
-            <ul className="scan-hits">
-              {parsed.items.map((item) => (
+          {/* 찾자마자 목록을 보여준다 — 숫자만 있으면 무엇을 담는지 모른 채 누르게 된다.
+              앞의 몇 개는 항상 펼쳐 두고, 나머지는 필요할 때 연다. */}
+          <ul className="scan-hits" style={{ marginTop: 10 }}>
+            {(showDetails ? parsed.items : parsed.items.slice(0, PREVIEW_COUNT)).map((item) => (
                 <li key={item.name} className="report-row">
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <input type="checkbox" checked={isChecked(item)} onChange={() => toggle(item)} />
@@ -430,7 +445,20 @@ export default function ConnectionImport({
                   </span>
                 </li>
               ))}
-            </ul>
+          </ul>
+
+          {parsed.items.length > PREVIEW_COUNT && (
+            <button
+              type="button"
+              className="linklike"
+              onClick={() => setShowDetails((v) => !v)}
+              aria-expanded={showDetails}
+              style={{ marginTop: 8 }}
+            >
+              {showDetails
+                ? '목록 접기'
+                : `나머지 ${parsed.items.length - PREVIEW_COUNT}개 더 보기`}
+            </button>
           )}
         </div>
       )}
