@@ -1491,6 +1491,23 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
   .next-step .btn { width: 100%; }
 }
 
+/* 확장으로 한 번에 가져오는 자리 — 설치된 사람에게만 보인다. */
+.ext-collect {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--safe);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.ext-collect-note {
+  margin-bottom: 10px;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.ext-collect-note strong { color: var(--text); }
+
 /* 연결 목록에서 사라진 계정을 정리 완료로 확정하는 자리.
    consent-notice와 골격은 같고 왼쪽 띠만 safe로 둔다 — 경고가 아니라 확인이다. */
 .revoke-confirm {

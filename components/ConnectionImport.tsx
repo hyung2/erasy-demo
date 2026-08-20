@@ -11,6 +11,7 @@
 // 넣되 표시하고, 빼는 판단은 사용자가 편한 자리에서 하게 한다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseConnectionList, type ImportProvider, type ParsedConnection } from '@/lib/connection-import';
+import { collectViaExtension, detectExtension } from '@/lib/extension-bridge';
 
 const PROVIDERS: Array<{ id: ImportProvider; label: string; href: string; hint: string }> = [
   {
@@ -63,6 +64,13 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
   const [awaitingReturn, setAwaitingReturn] = useState(false);
   const openedAt = useRef(0);
 
+  /**
+   * 확장이 설치돼 있으면 자동 수집 경로가 열린다. 없으면 이 버튼 자체가 나타나지 않는다 —
+   * 설치하지 않은 사람에게 눌러도 안 되는 버튼을 보여 주면 그게 곧 미완성 인상이 된다.
+   */
+  const [hasExtension, setHasExtension] = useState(false);
+  const [collecting, setCollecting] = useState(false);
+
   const parsed = useMemo(() => (text.trim() ? parseConnectionList(text) : null), [text]);
 
   const isChecked = (item: ParsedConnection) => item.preselected && !excluded.has(item.name);
@@ -97,6 +105,39 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
       setError('브라우저가 붙여넣기를 막았습니다. 아래 칸에 직접 붙여넣어 주세요.');
     }
   }, []);
+
+  // 확장 존재 확인 — 구글 탭에서만 의미가 있으므로 provider가 google일 때만 노출한다.
+  useEffect(() => {
+    let alive = true;
+    void detectExtension().then((v) => {
+      if (alive) setHasExtension(v);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /**
+   * 확장으로 한 번에 가져오기.
+   * 확장이 백그라운드 탭에서 연결목록 페이지를 열어 **서비스 이름만** 읽고 닫는다.
+   * 결과는 붙여넣기와 똑같이 미리보기를 거친다 — 자동으로 왔다고 확인 없이 저장하지 않는다.
+   */
+  async function collectWithExtension() {
+    setCollecting(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await collectViaExtension();
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setText(res.names.join('\n'));
+      setAwaitingReturn(false);
+    } finally {
+      setCollecting(false);
+    }
+  }
 
   /** 연결 목록 창을 새로 띄우고, 돌아오는 시점을 잡아 안내를 올린다. */
   function openProviderPage() {
@@ -238,6 +279,24 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
           </button>
         ))}
       </div>
+
+      {/* 확장이 있으면 한 번에 가져온다. 없으면 이 블록은 아예 나타나지 않는다. */}
+      {!parsed && hasExtension && provider === 'google' && (
+        <div className="ext-collect">
+          <p className="ext-collect-note">
+            <strong>확장 프로그램이 연결되어 있습니다.</strong> 버튼을 누르면 구글 연결목록을
+            자동으로 가져옵니다. 아이디·비밀번호는 읽지 않고, 서비스 이름만 가져옵니다.
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => void collectWithExtension()}
+            disabled={collecting}
+          >
+            {collecting ? '가져오는 중…' : '연결목록 한 번에 가져오기'}
+          </button>
+        </div>
+      )}
 
       {!parsed && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>

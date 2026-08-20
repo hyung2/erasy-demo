@@ -1,0 +1,89 @@
+// 브라우저 확장과의 통신 — 확장이 설치돼 있을 때만 열리는 자동 수집 경로.
+//
+// 왜 있는가: 3사가 연결앱 목록 API를 열지 않아 서버가 물어볼 곳이 없다. 남은 합법 경로는
+// 붙여넣기와 "사용자 본인 브라우저가 자기 화면을 읽기" 둘뿐이고, 확장이 후자다.
+// 확장이 없으면 이 경로는 조용히 닫히고 화면은 기존 붙여넣기만 보여준다 —
+// 설치하지 않은 사람에게 없는 버튼을 보여 주면 그게 곧 미완성 인상이 된다.
+//
+// 확장 ID를 쓰지 않는다: 압축 해제 설치는 ID가 매번 바뀐다. 확장이 먼저 ready를 알리고
+// 이후 window.postMessage로만 오간다(lib/../extension/bridge.js와 같은 규약).
+
+const APP = 'erasy-app';
+const EXT = 'erasy-ext';
+
+type ExtMessage =
+  | { source: typeof EXT; type: 'ready'; version?: string }
+  | {
+      source: typeof EXT;
+      type: 'collected';
+      requestId: string | null;
+      ok: boolean;
+      names?: string[];
+      error?: string;
+    };
+
+function isExtMessage(v: unknown): v is ExtMessage {
+  return typeof v === 'object' && v !== null && (v as { source?: unknown }).source === EXT;
+}
+
+/**
+ * 확장이 있는지 확인한다. 확장은 페이지 로드 시 스스로 ready를 보내지만, 앱이 그보다
+ * 늦게 뜨면 그 신호를 놓친다 — 그래서 ping을 한 번 던지고 짧게 기다린다.
+ */
+export function detectExtension(timeoutMs = 600): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v: boolean) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('message', onMessage);
+      resolve(v);
+    };
+    function onMessage(e: MessageEvent) {
+      if (e.source !== window || !isExtMessage(e.data)) return;
+      if (e.data.type === 'ready') finish(true);
+    }
+    window.addEventListener('message', onMessage);
+    window.postMessage({ source: APP, type: 'ping' }, window.location.origin);
+    setTimeout(() => finish(false), timeoutMs);
+  });
+}
+
+export type CollectResult = { ok: true; names: string[] } | { ok: false; error: string };
+
+/**
+ * 확장에 수집을 요청한다. 확장이 백그라운드 탭으로 연결목록 페이지를 열어 **서비스 이름만**
+ * 읽고 탭을 닫는다. 아이디·비밀번호는 이 경로 어디에서도 다루지 않는다.
+ */
+export function collectViaExtension(timeoutMs = 20000): Promise<CollectResult> {
+  if (typeof window === 'undefined') {
+    return Promise.resolve({ ok: false, error: '브라우저에서만 사용할 수 있습니다.' });
+  }
+  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v: CollectResult) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('message', onMessage);
+      resolve(v);
+    };
+    function onMessage(e: MessageEvent) {
+      if (e.source !== window || !isExtMessage(e.data)) return;
+      if (e.data.type !== 'collected') return;
+      if (e.data.requestId && e.data.requestId !== requestId) return;
+      finish(
+        e.data.ok && e.data.names?.length
+          ? { ok: true, names: e.data.names }
+          : { ok: false, error: e.data.error ?? '목록을 가져오지 못했습니다.' },
+      );
+    }
+    window.addEventListener('message', onMessage);
+    window.postMessage({ source: APP, type: 'collect', requestId }, window.location.origin);
+    setTimeout(
+      () => finish({ ok: false, error: '시간이 초과됐습니다. 다시 시도해 주세요.' }),
+      timeoutMs,
+    );
+  });
+}

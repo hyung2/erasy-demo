@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Erasy — 연결목록 가져오기",
+  "version": "0.1.0",
+  "description": "구글 계정의 연결된 서비스 목록을 이레이지로 가져옵니다. 아이디·비밀번호는 읽지 않습니다.",
+  "permissions": ["tabs", "scripting"],
+  "host_permissions": ["https://myaccount.google.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://service-app-seven-virid.vercel.app/*",
+        "http://localhost/*"
+      ],
+      "js": ["bridge.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
