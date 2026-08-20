@@ -324,7 +324,7 @@ export default function ConnectionImport({
 
       {/* 로그인이 안 돼 있으면 그 사실과 갈 곳을 먼저 보여준다. 이건 실패가 아니라
           아직 못 한 일이라, 붉은 오류가 아니라 안내로 다룬다. */}
-      {!parsed && needsLogin && (
+      {!parsed && !result && needsLogin && (
         <div className="needs-login">
           <p className="needs-login-title">{current.label}에 로그인이 필요해요</p>
           <p className="needs-login-note">
@@ -355,8 +355,10 @@ export default function ConnectionImport({
         </div>
       )}
 
-      {/* 원터치 — 확장이 이 제공사를 지원할 때의 **주 동작**. 화면에서 가장 크다. */}
-      {!parsed && canAutoCollect && !needsLogin && (
+      {/* 원터치 — 확장이 이 제공사를 지원할 때의 **주 동작**. 화면에서 가장 크다.
+          담고 나면(result) 사라진다. 남겨 두면 "또 눌러야 하나"를 한 번 더 생각하게 되고,
+          정작 눌러야 할 다음 버튼과 경쟁한다. */}
+      {!parsed && !result && canAutoCollect && !needsLogin && (
         <div className="ext-collect">
           <button
             type="button"
@@ -376,6 +378,7 @@ export default function ConnectionImport({
       {/* 수동 경로. 확장이 있으면 접어 두고 "안 될 때"라고 못박는다 — 예비 수단이 주 동작과
           같은 크기로 나란히 있으면 무엇을 먼저 눌러야 하는지가 사라진다. */}
       {!parsed &&
+        !result &&
         (canAutoCollect ? (
           <details className="fallback-section">
             <summary>자동으로 가져오지 못했다면</summary>
@@ -585,6 +588,25 @@ export default function ConnectionImport({
               style={{ marginTop: 12, width: '100%' }}
             >
               {nextLabel ?? '다음'}
+            </button>
+          )}
+
+          {/* 온보딩 밖(계정 스캔)에서는 다음 걸음이 없다. 대신 되돌아갈 길을 둔다 —
+              제공사에서 연결을 끊고 와 다시 가져오면 사라진 항목이 잡히는데,
+              그 왕복이 이 화면의 핵심 기능이라 막아 두면 안 된다. */}
+          {!onNext && (
+            <button
+              type="button"
+              className="linklike"
+              onClick={() => {
+                setResult(null);
+                setMarkedCount(null);
+                setFlagged([]);
+                setNeedsLogin(null);
+              }}
+              style={{ marginTop: 12 }}
+            >
+              다시 가져오기
             </button>
           )}
 
