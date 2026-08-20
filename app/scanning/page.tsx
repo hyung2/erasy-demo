@@ -84,28 +84,40 @@ function ScanningInner() {
           <span className="logo">{brand.nameEn}</span>
         </div>
 
-        {/* 진행 표시 — 지금 어디고 무엇이 끝났는지. 건너뛴 단계는 완료로 세지 않는다. */}
-        <div className="onboard-progress" role="status">
-          {STEPS.map((s, i) => (
-            <span
-              key={s.id}
-              className={applied[s.id] ? 'is-done' : i === index ? 'is-current' : ''}
-            >
-              {applied[s.id] ? '✓' : i + 1} {s.label}
-            </span>
-          ))}
-          <span className="onboard-progress-count">
-            {index + 1}/{STEPS.length}단계
-          </span>
+        {/* 진행 표시 — 막대로 어디쯤인지, 라벨로 무엇이 끝났는지.
+            건너뛴 단계는 완료로 세지 않는다(막대는 위치, 체크는 실제 성과). */}
+        <div
+          className="onboard-bar"
+          role="progressbar"
+          aria-valuemin={1}
+          aria-valuemax={STEPS.length}
+          aria-valuenow={index + 1}
+          aria-label={`계정 찾기 ${index + 1}/${STEPS.length}단계`}
+        >
+          <div className="onboard-bar-track">
+            <i style={{ width: `${((index + 1) / STEPS.length) * 100}%` }} />
+          </div>
+          <div className="onboard-bar-steps">
+            {STEPS.map((s, i) => (
+              <span
+                key={s.id}
+                className={
+                  applied[s.id] ? 'is-done' : i === index ? 'is-current' : i < index ? 'is-past' : ''
+                }
+              >
+                {applied[s.id] ? '✓' : i + 1} {s.label}
+              </span>
+            ))}
+          </div>
         </div>
 
-        <div className="auth-head">
+        <div className="auth-head compact">
           <h1>{step.title}</h1>
           <p>{step.guide}</p>
         </div>
 
         {step.id === 'mail' ? (
-          <GmailScan onApplied={() => setApplied((p) => ({ ...p, mail: true }))} />
+          <GmailScan compact onApplied={() => setApplied((p) => ({ ...p, mail: true }))} />
         ) : (
           <ConnectionImport
             key={step.id}

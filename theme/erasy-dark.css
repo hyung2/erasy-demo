@@ -1630,6 +1630,39 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 .onboard-box { max-width: 620px; }
 
 /* 두 경로의 진행 상태. 하나만 하고 넘어가면 그 사실이 남는다 */
+/* 온보딩 진행 막대 — 구글 → 카카오 → 네이버 → 메일함 중 어디쯤인지.
+   단계를 나눠 놓으면 "몇 개나 더 남았지"가 첫 질문이 된다. 그 답을 화면 맨 위에 둔다. */
+.onboard-bar { margin-bottom: 14px; }
+.onboard-bar-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.onboard-bar-track > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.35s var(--ease);
+}
+.onboard-bar-steps {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--text-mute);
+  font-size: 0.75rem;
+}
+.onboard-bar-steps .is-done { color: var(--safe); font-weight: 600; }
+.onboard-bar-steps .is-current { color: var(--accent); font-weight: 600; }
+.onboard-bar-steps .is-past { color: var(--text-dim); }
+
+/* 온보딩 제목 — 단계마다 반복되는 자리라 여백을 줄여 버튼을 첫 화면 안으로 끌어올린다. */
+.auth-head.compact { margin-bottom: 14px; }
+.auth-head.compact h1 { font-size: 1.125rem; margin-bottom: 6px; }
+.auth-head.compact p { font-size: 0.8125rem; line-height: 1.6; }
+
 .onboard-progress {
   display: flex;
   align-items: center;

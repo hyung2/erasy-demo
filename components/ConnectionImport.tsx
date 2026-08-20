@@ -288,16 +288,22 @@ export default function ConnectionImport({
 
   return (
     <section className="panel" aria-labelledby="conn-import-title">
-      <div className="breach-head">
-        <h3 id="conn-import-title">간편가입한 서비스 가져오기</h3>
-        <span className="badge live">실측</span>
-      </div>
+      {/* 온보딩에서는 페이지가 이미 제목과 안내를 주고 있어 여기서 또 하면 겹친다.
+          그만큼 버튼이 스크롤 아래로 밀려, 화면을 열자마자 할 일이 안 보인다. */}
+      {!lockedProvider && (
+        <>
+          <div className="breach-head">
+            <h3 id="conn-import-title">간편가입한 서비스 가져오기</h3>
+            <span className="badge live">실측</span>
+          </div>
 
-      <p className="score-sub">
-        구글·카카오·네이버로 간편가입한 서비스 목록입니다. 연결 목록을 복사해 붙여넣으면 한 번에
-        인벤토리에 담습니다. 어느 계정에서 가져왔는지 알기 때문에{' '}
-        <strong>가입 방식이 추측이 아닌 사실로 기록</strong>됩니다.
-      </p>
+          <p className="score-sub">
+            구글·카카오·네이버로 간편가입한 서비스 목록입니다. 연결 목록을 복사해 붙여넣으면 한
+            번에 인벤토리에 담습니다. 어느 계정에서 가져왔는지 알기 때문에{' '}
+            <strong>가입 방식이 추측이 아닌 사실로 기록</strong>됩니다.
+          </p>
+        </>
+      )}
 
       {!lockedProvider && (
         <div className="chip-row" role="tablist" aria-label="가져올 계정 선택">

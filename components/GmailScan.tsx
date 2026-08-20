@@ -78,7 +78,18 @@ function loadGis(): Promise<GoogleGlobal> {
   });
 }
 
-export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
+export default function GmailScan({
+  onApplied,
+  compact,
+}: {
+  onApplied?: () => void;
+  /**
+   * 온보딩처럼 페이지가 이미 제목과 안내를 주는 자리에서 쓴다. 제목과 긴 설명을 접어
+   * 버튼을 첫 화면 안으로 끌어올린다.
+   * **권한 경고 안내는 접지 않는다** — 누르기 전에 봐야 하는 내용이다.
+   */
+  compact?: boolean;
+}) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ScanData | null>(null);
@@ -167,18 +178,23 @@ export default function GmailScan({ onApplied }: { onApplied?: () => void }) {
 
   return (
     <section className="panel" aria-labelledby="gmail-scan-title">
-      <div className="breach-head">
-        <h3 id="gmail-scan-title">메일함으로 계정 찾기</h3>
-        <span className="badge live">실측</span>
-      </div>
+      {!compact && (
+        <>
+          <div className="breach-head">
+            <h3 id="gmail-scan-title">메일함으로 계정 찾기</h3>
+            <span className="badge live">실측</span>
+          </div>
 
-      <p className="score-sub">
-        가입·인증 메일을 <strong>구글 검색에 맡겨</strong> 골라내고, 그렇게 걸린 메일의{' '}
-        <strong>발신자와 날짜만</strong> 받아 서비스를 되짚습니다. 검색은 구글 서버에서 이뤄지므로{' '}
-        <strong>메일 내용은 우리 서버로 오지 않고 저장되지도 않습니다</strong>. 권한도 이 조회에만
-        쓰이고 보관하지 않습니다. 네이버·카카오처럼 개인 메일 주소로도 쓰이는 도메인은 서비스 알림
-        주소에서 온 메일만 셉니다.
-      </p>
+          <p className="score-sub">
+            가입·인증 메일을 <strong>구글 검색에 맡겨</strong> 골라내고, 그렇게 걸린 메일의{' '}
+            <strong>발신자와 날짜만</strong> 받아 서비스를 되짚습니다. 검색은 구글 서버에서
+            이뤄지므로{' '}
+            <strong>메일 내용은 우리 서버로 오지 않고 저장되지도 않습니다</strong>. 권한도 이
+            조회에만 쓰이고 보관하지 않습니다. 네이버·카카오처럼 개인 메일 주소로도 쓰이는
+            도메인은 서비스 알림 주소에서 온 메일만 셉니다.
+          </p>
+        </>
+      )}
 
       {/* 구글 권한 창에 "확인되지 않은 앱" 경고가 뜬다. 아직 구글 앱 검증을 받지 않았기
           때문이고, 민감 권한이라 검증에 몇 주가 걸린다. 미리 말하지 않으면 처음 보는 사람은
