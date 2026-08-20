@@ -24,11 +24,22 @@ const POLL_MS = 400;
  * selector가 null인 제공사는 아직 실제 DOM을 확인하지 못한 곳이다. 지어낸 셀렉터를 넣으면
  * 사용자는 "가져오기 실패"만 반복해서 보게 되므로, 확인 전까지는 그 경로를 열지 않는다.
  */
+// 목록을 열었는데 로그인 화면으로 튕기면 그때 URL이 이 패턴이 된다.
+// 감지해서 **바로** 알린다 — 렌더 대기 상한(15초)을 다 기다린 뒤 "읽지 못했습니다"라고
+// 말하면 사용자는 무엇이 문제인지 모른 채 시간만 쓴다.
+const LOGIN_URL_PATTERNS = [
+  /accounts\.google\.com\/(signin|ServiceLogin|v3\/signin)/i,
+  /accounts\.kakao\.com\/login/i,
+  /nid\.naver\.com\/nidlogin/i,
+  /nid\.naver\.com\/user2\/V2Login/i,
+];
+
 const PROVIDERS = {
   google: {
     label: '구글',
     urls: ['https://myaccount.google.com/connections'],
     selector: 'a[href*="linkedapps/overview"]',
+    loginUrl: 'https://accounts.google.com/signin',
   },
   kakao: {
     label: '카카오',
@@ -46,6 +57,7 @@ const PROVIDERS = {
     // 항목 안에 "상세보기 이동" 같은 보조 텍스트가 같이 들어 있어, 서비스명이 담긴
     // 요소를 직접 집는다.
     nameSelector: 'strong',
+    loginUrl: 'https://accounts.kakao.com/login',
   },
   naver: {
     label: '네이버',
@@ -57,6 +69,7 @@ const PROVIDERS = {
     // 이 제품에서 오탐은 "없는 계정을 있다고 말하는 것"이라 미발견보다 나쁘다.
     urls: ['https://nid.naver.com/internalToken/view/tokenList/pc/ko'],
     selector: 'strong.service_title',
+    loginUrl: 'https://nid.naver.com/nidlogin.login',
   },
 };
 
@@ -103,22 +116,37 @@ function countNodes(selector) {
   return document.querySelectorAll(selector).length;
 }
 
+/** 지금 이 탭이 로그인 화면으로 튕겼는가. 튕겼으면 더 기다릴 이유가 없다. */
+async function isLoginRedirect(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    const url = tab?.url ?? '';
+    return LOGIN_URL_PATTERNS.some((re) => re.test(url));
+  } catch {
+    return false;
+  }
+}
+
+/** 렌더 대기 결과 — 'ready' 목록 나옴 · 'login' 로그인 필요 · 'timeout' 그 외 실패. */
 async function waitForRender(tabId, selector) {
   const deadline = Date.now() + READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
+    // 로그인 화면이면 즉시 끝낸다. 상한을 다 기다린 뒤 "읽지 못했습니다"라고 말하면
+    // 사용자는 무엇이 문제인지 모른 채 15초를 버린다.
+    if (await isLoginRedirect(tabId)) return 'login';
     try {
       const [res] = await chrome.scripting.executeScript({
         target: { tabId },
         func: countNodes,
         args: [selector],
       });
-      if ((res?.result ?? 0) > 0) return true;
+      if ((res?.result ?? 0) > 0) return 'ready';
     } catch {
       // 탭이 아직 스크립트를 받을 준비가 안 된 상태 — 다음 폴에서 다시 본다.
     }
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
-  return false;
+  return (await isLoginRedirect(tabId)) ? 'login' : 'timeout';
 }
 
 /** 한 페이지에서 이름을 읽는다. 실패해도 던지지 않는다 — 나머지 페이지는 계속 읽어야 한다. */
@@ -126,16 +154,16 @@ async function collectFromUrl(url, selector, nameSelector) {
   // 눈에 띄지 않게 뒤에서 연다. 사용자가 보던 화면을 빼앗지 않는다.
   const tab = await chrome.tabs.create({ url, active: false });
   try {
-    const rendered = await waitForRender(tab.id, selector);
-    if (!rendered) return { ok: false, names: [] };
+    const state = await waitForRender(tab.id, selector);
+    if (state !== 'ready') return { ok: false, needsLogin: state === 'login', names: [] };
     const [res] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: extractNames,
       args: [selector, nameSelector ?? null],
     });
-    return { ok: true, names: res?.result ?? [] };
+    return { ok: true, needsLogin: false, names: res?.result ?? [] };
   } catch {
-    return { ok: false, names: [] };
+    return { ok: false, needsLogin: false, names: [] };
   } finally {
     // 읽고 나면 바로 닫는다. 열어 둘 이유가 없고, 열린 채 두면 사용자가 놀란다.
     try {
@@ -161,12 +189,28 @@ async function collect(providerKey) {
   // 조용히 일부만 가져오면 사용자는 그게 전부인 줄 안다.
   const all = [];
   let failed = 0;
+  let needsLogin = false;
   for (const url of provider.urls) {
     const r = await collectFromUrl(url, provider.selector, provider.nameSelector);
     if (!r.ok) failed += 1;
+    if (r.needsLogin) {
+      // 로그인이 필요하면 나머지 주소도 마찬가지다. 탭을 더 열지 않는다.
+      needsLogin = true;
+      break;
+    }
     all.push(...r.names);
   }
   const names = Array.from(new Set(all));
+
+  if (needsLogin) {
+    return {
+      ok: false,
+      needsLogin: true,
+      provider: providerKey,
+      loginUrl: provider.loginUrl ?? null,
+      error: `${provider.label}에 로그인되어 있지 않습니다. 먼저 로그인하시면 연결목록을 가져올 수 있어요.`,
+    };
+  }
 
   if (names.length === 0) {
     return {

@@ -20,6 +20,8 @@ type ExtMessage =
       ok: boolean;
       names?: string[];
       error?: string;
+      needsLogin?: boolean;
+      loginUrl?: string | null;
     };
 
 function isExtMessage(v: unknown): v is ExtMessage {
@@ -55,7 +57,11 @@ export function detectExtension(timeoutMs = 800): Promise<string[]> {
   });
 }
 
-export type CollectResult = { ok: true; names: string[] } | { ok: false; error: string };
+export type CollectResult =
+  | { ok: true; names: string[] }
+  // needsLogin이면 화면이 "먼저 로그인하세요 + 로그인 페이지 열기"를 보여준다.
+  // 그냥 실패로 뭉뚱그리면 사용자는 무엇이 문제인지 모른 채 같은 버튼만 다시 누른다.
+  | { ok: false; error: string; needsLogin?: boolean; loginUrl?: string | null };
 
 /**
  * 확장에 수집을 요청한다. 확장이 백그라운드 탭으로 연결목록 페이지를 열어 **서비스 이름만**
@@ -84,7 +90,12 @@ export function collectViaExtension(
       finish(
         e.data.ok && e.data.names?.length
           ? { ok: true, names: e.data.names }
-          : { ok: false, error: e.data.error ?? '목록을 가져오지 못했습니다.' },
+          : {
+              ok: false,
+              error: e.data.error ?? '목록을 가져오지 못했습니다.',
+              needsLogin: e.data.needsLogin ?? false,
+              loginUrl: e.data.loginUrl ?? null,
+            },
       );
     }
     window.addEventListener('message', onMessage);

@@ -93,6 +93,8 @@ export default function ConnectionImport({
    */
   const [extProviders, setExtProviders] = useState<string[]>([]);
   const [collecting, setCollecting] = useState(false);
+  /** 해당 제공사에 로그인이 안 돼 있는 상태. 실패와 구분해 갈 곳을 알려 준다. */
+  const [needsLogin, setNeedsLogin] = useState<{ loginUrl: string | null } | null>(null);
 
   const parsed = useMemo(() => (text.trim() ? parseConnectionList(text) : null), [text]);
 
@@ -156,9 +158,12 @@ export default function ConnectionImport({
     try {
       const res = await collectViaExtension(provider);
       if (!res.ok) {
-        setError(res.error);
+        // 로그인이 필요한 경우는 "실패"가 아니라 "아직 못 한 일"이다. 문구도 갈 곳도 다르다.
+        if (res.needsLogin) setNeedsLogin({ loginUrl: res.loginUrl ?? null });
+        else setError(res.error);
         return;
       }
+      setNeedsLogin(null);
       setText(res.names.join('\n'));
       setAwaitingReturn(false);
     } finally {
@@ -311,8 +316,41 @@ export default function ConnectionImport({
         </div>
       )}
 
+      {/* 로그인이 안 돼 있으면 그 사실과 갈 곳을 먼저 보여준다. 이건 실패가 아니라
+          아직 못 한 일이라, 붉은 오류가 아니라 안내로 다룬다. */}
+      {!parsed && needsLogin && (
+        <div className="needs-login">
+          <p className="needs-login-title">{current.label}에 로그인이 필요해요</p>
+          <p className="needs-login-note">
+            연결목록은 <strong>{current.label} 계정에 로그인된 상태</strong>에서만 읽을 수
+            있습니다. 새 탭에서 로그인하신 뒤 다시 눌러 주세요. 아이디·비밀번호는 이레이지가
+            보지 않습니다.
+          </p>
+          <div className="needs-login-actions">
+            {needsLogin.loginUrl && (
+              <a
+                className="btn btn-primary"
+                href={needsLogin.loginUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {current.label} 로그인하러 가기 ↗
+              </a>
+            )}
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void collectWithExtension()}
+              disabled={collecting}
+            >
+              {collecting ? '확인 중…' : '로그인했어요 · 다시 가져오기'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 원터치 — 확장이 이 제공사를 지원할 때의 **주 동작**. 화면에서 가장 크다. */}
-      {!parsed && canAutoCollect && (
+      {!parsed && canAutoCollect && !needsLogin && (
         <div className="ext-collect">
           <button
             type="button"
