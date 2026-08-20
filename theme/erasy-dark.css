@@ -1546,6 +1546,8 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
   font-size: 0.8125rem;
 }
 .onboard-progress .is-done { color: var(--safe); font-weight: 600; }
+/* 지금 밟고 있는 단계 — 끝난 것(초록)과 아직 안 한 것(흐림) 사이에서 눈에 먼저 들어와야 한다 */
+.onboard-progress .is-current { color: var(--accent); font-weight: 600; }
 .onboard-progress .sep { color: var(--border-strong); }
 .onboard-progress-count { margin-left: auto; color: var(--text-mute); }
 

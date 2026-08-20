@@ -48,8 +48,18 @@ type ImportResult = {
   missing: MissingConnection[];
 };
 
-export default function ConnectionImport({ onApplied }: { onApplied?: () => void }) {
-  const [provider, setProvider] = useState<ImportProvider>('google');
+export default function ConnectionImport({
+  onApplied,
+  lockedProvider,
+}: {
+  onApplied?: () => void;
+  /**
+   * 온보딩처럼 한 제공사씩 밟는 화면에서 쓴다. 칩을 숨기고 그 제공사만 다룬다 —
+   * 단계를 나눠 놓고 칩으로 아무 데나 갈 수 있으면 "지금 어디를 하는 중인지"가 흐려진다.
+   */
+  lockedProvider?: ImportProvider;
+}) {
+  const [provider, setProvider] = useState<ImportProvider>(lockedProvider ?? 'google');
   const [text, setText] = useState('');
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [showDetails, setShowDetails] = useState(false);
@@ -267,20 +277,22 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
         <strong>가입 방식이 추측이 아닌 사실로 기록</strong>됩니다.
       </p>
 
-      <div className="chip-row" role="tablist" aria-label="가져올 계정 선택">
-        {PROVIDERS.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            role="tab"
-            aria-selected={provider === p.id}
-            className={`chip ${provider === p.id ? 'active' : ''}`}
-            onClick={() => setProvider(p.id)}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
+      {!lockedProvider && (
+        <div className="chip-row" role="tablist" aria-label="가져올 계정 선택">
+          {PROVIDERS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              role="tab"
+              aria-selected={provider === p.id}
+              className={`chip ${provider === p.id ? 'active' : ''}`}
+              onClick={() => setProvider(p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 확장이 이 제공사를 지원할 때만 한 번에 가져온다. 아니면 블록 자체가 없다. */}
       {!parsed && extProviders.includes(provider) && (

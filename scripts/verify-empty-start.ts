@@ -18,6 +18,7 @@
  * prod·공유 DB 오염 가드: DATABASE_URL이 localhost가 아니면 중단한다.
  */
 import { PrismaClient } from '@prisma/client';
+import { readFileSync } from 'node:fs';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:3020';
 if (!/localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL ?? '')) {
@@ -132,29 +133,35 @@ async function main() {
   );
 
   const onboard = await fetch(`${BASE}/scanning`, { headers: { cookie: cookie() } });
-  const html = await onboard.text();
   // 발견 경로는 **둘 다** 있어야 한다. 메일 스캔은 Gmail만 보므로 네이버·다음 메일을 주로
   // 쓰는 사람은 그 길로 아무것도 못 찾는다. 소셜 연결목록이 빠지면 그 사용자는 빈 화면에서
   // 시작해 빈 화면으로 끝난다.
-  const mailAt = html.indexOf('메일함으로 계정 찾기');
-  const linkAt = html.indexOf('간편가입한 서비스 가져오기');
-  const hasMailPath = mailAt >= 0;
-  const hasLinkPath = linkAt >= 0;
-  const hasStaleTheater = html.includes('계정을 찾는 중') || html.includes('안전도 점수를 산출하고');
+  // (f·f2) 온보딩 단계 계약.
+  //   `/scanning`은 정적 프리렌더 + Suspense fallback=null이라 **초기 HTML이 비어 있다**
+  //   — 응답 본문으로는 무엇이 들어 있는지 잴 수 없다(2026-08-19·20 두 번 확인).
+  //   그래서 단계 정의를 소스에서 직접 읽어 계약을 잰다. 렌더 여부가 아니라 "무엇을 어떤
+  //   순서로 밟게 했는가"가 여기서 지키려는 것이다.
+  const src = readFileSync(new URL('../app/scanning/page.tsx', import.meta.url), 'utf8');
+  const stepIds = [...src.matchAll(/^\s*id:\s*'([a-z]+)'/gm)].map((m) => m[1]);
+  const expected = ['google', 'kakao', 'naver', 'mail'];
+  const hasStaleTheater =
+    src.includes('계정을 찾는 중') || src.includes('안전도 점수를 산출하고');
   check(
-    'f 온보딩에 발견 경로 2종',
-    onboard.status === 200 && hasMailPath && hasLinkPath && !hasStaleTheater,
-    `${onboard.status} · 메일함 ${hasMailPath} · 연결목록 ${hasLinkPath} · 옛 연출 문구 ${hasStaleTheater}`,
+    'f 온보딩 단계 4종',
+    onboard.status === 200 &&
+      expected.every((e) => stepIds.includes(e)) &&
+      !hasStaleTheater,
+    `${onboard.status} · 단계 [${stepIds.join(', ')}] · 옛 연출 문구 ${hasStaleTheater}`,
   );
 
-  // (f2) 순서도 계약이다. 사업계획서 "(다) 단계적 발견 경로"는 사용자 직접 가져오기를 1단계로,
+  // 순서도 계약이다. 사업계획서 "(다) 단계적 발견 경로"는 사용자 직접 가져오기를 1단계로,
   //   메일 자동 분석을 CASA Tier2 통과가 필요한 2단계로 둔다. 메일 스캔이 앞에 서면 민감
   //   scope 동의창과 "확인되지 않은 앱" 경고가 첫 관문이 되고, 구글 메일을 안 쓰는 사람은
-  //   그 관문을 넘고도 빈손으로 나온다. 존재만 재던 가드가 순서 회귀는 놓쳤다(2026-08-19).
+  //   그 관문을 넘고도 빈손으로 나온다.
   check(
-    'f2 발견 경로 순서 — 연결목록이 먼저',
-    hasLinkPath && hasMailPath && linkAt < mailAt,
-    `연결목록 ${linkAt} < 메일함 ${mailAt} (정본 1단계가 앞이어야)`,
+    'f2 단계 순서 — 연결목록 3사 먼저, 메일함 마지막',
+    stepIds.join(',') === expected.join(','),
+    `[${stepIds.join(', ')}] (기대 [${expected.join(', ')}])`,
   );
 }
 

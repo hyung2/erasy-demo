@@ -1,38 +1,81 @@
 'use client';
 
-// 로그인 직후 온보딩. **두 경로를 모두 밟게 한다.**
+// 로그인 직후 온보딩 — **한 곳씩 순서대로** 찾는다.
 //
-// 처음에는 이 화면이 연출이었다 — 프로그레스가 3.7초 돌고 대시보드로 넘어갔고 조회는 하나도
+// 처음에는 이 화면이 연출이었다. 프로그레스가 3.7초 돌고 대시보드로 넘어갔고 조회는 하나도
 // 하지 않았다(2026-08-18에 실제 스캔으로 교체).
 //
-// 그다음 드러난 문제가 이것이다: 메일 스캔은 Gmail만 본다. 네이버·다음 메일을 주로 쓰는
-// 사람은 스캔해도 거의 안 나오고, 빈 화면에서 시작해 빈 화면으로 끝난다. 한국 사용자에게는
-// 오히려 소셜 로그인 연결목록 쪽이 더 많이 잡히는데(플랫폼이 준 사실이라 추정도 아니다),
-// 그게 보조 버튼으로 밀려 있었다.
+// 그다음에는 두 경로(메일함·연결목록)를 한 화면에 나란히 놨다. 그런데 연결목록은 제공사가
+// 셋이고 각각 다른 곳을 봐야 한다 — 한 화면에 칩으로 몰아 두니 "지금 어디까지 했는지"가
+// 사용자에게 남지 않았다. 실제로 카카오만 하고 끝난 줄 아는 일이 생겼다(2026-08-20).
 //
-// 그래서 두 경로를 같은 무게로 세우고, 각각 끝냈는지를 화면이 기억한다. 어느 쪽을 먼저
-// 하든 상관없고 둘 다 해야 빠지는 영역이 줄어든다.
-//
-// ?return=/scan 이면 완료 후 계정 목록으로 돌아간다(스캔 화면의 "다시 스캔" 왕복).
-import { Suspense, useState } from 'react';
+// 그래서 제공사별로 단계를 나눈다. 한 화면에 할 일 하나, 끝나면 다음. 각 단계는 건너뛸 수
+// 있고, 마지막에 종합 목록으로 간다. 무엇을 했고 무엇을 건너뛰었는지가 진행 표시에 남는다.
+import { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import GmailScan from '@/components/GmailScan';
 import ConnectionImport from '@/components/ConnectionImport';
-import { brand, demo } from '@/content/copy';
+import { brand } from '@/content/copy';
+import type { ImportProvider } from '@/lib/connection-import';
 
 // 오픈 리다이렉트 방지 — 앱 내부 경로만 허용.
 const ALLOWED_RETURN = new Set(['/dashboard', '/scan']);
+
+type StepId = ImportProvider | 'mail';
+
+const STEPS: {
+  id: StepId;
+  label: string;
+  title: string;
+  guide: string;
+}[] = [
+  {
+    id: 'google',
+    label: '구글',
+    title: '구글로 가입한 서비스부터 찾을게요',
+    guide:
+      '구글 계정에 연결된 서비스 목록입니다. 플랫폼이 준 사실이라 추측이 섞이지 않습니다.',
+  },
+  {
+    id: 'kakao',
+    label: '카카오',
+    title: '카카오로 가입한 서비스를 찾을게요',
+    guide:
+      '카카오는 카카오서비스·제휴·외부 세 갈래로 나뉘어 있어, 세 곳을 모두 확인합니다.',
+  },
+  {
+    id: 'naver',
+    label: '네이버',
+    title: '네이버로 가입한 서비스를 찾을게요',
+    guide: '네이버 아이디로 로그인한 서비스 목록입니다.',
+  },
+  {
+    id: 'mail',
+    label: '메일함',
+    title: '메일함에도 가입 흔적이 남아 있어요',
+    guide:
+      '가입·인증 메일이 남아 있는 서비스를 찾습니다. 메일 본문은 읽지 않고 보낸 사람만 봅니다.',
+  },
+];
 
 function ScanningInner() {
   const router = useRouter();
   const params = useSearchParams();
   const raw = params.get('return');
-  const returnTo = raw && ALLOWED_RETURN.has(raw) ? raw : '/dashboard';
+  const returnTo = raw && ALLOWED_RETURN.has(raw) ? raw : '/scan';
 
-  // 두 경로의 완료 여부를 따로 기억한다. 하나만 하고 넘어가면 그 사실이 화면에 남는다.
-  const [mailDone, setMailDone] = useState(false);
-  const [linkDone, setLinkDone] = useState(false);
-  const doneCount = Number(mailDone) + Number(linkDone);
+  const [index, setIndex] = useState(0);
+  /** 각 단계에서 실제로 뭔가 담았는지. 건너뛴 것과 구분해 마지막 화면이 사실대로 말한다. */
+  const [applied, setApplied] = useState<Record<string, boolean>>({});
+
+  const step = STEPS[index];
+  const isLast = index === STEPS.length - 1;
+  const doneCount = useMemo(() => Object.values(applied).filter(Boolean).length, [applied]);
+
+  function goNext() {
+    if (isLast) router.replace(returnTo);
+    else setIndex((i) => i + 1);
+  }
 
   return (
     <div className="erasy-landing erasy-auth is-onboarding">
@@ -41,54 +84,65 @@ function ScanningInner() {
           <span className="logo">{brand.nameEn}</span>
         </div>
 
-        <div className="auth-head">
-          <h1>{demo.scanning.title}</h1>
-          <p>{demo.scanning.subtitle}</p>
-        </div>
-
-        {/* 진행 표시 — 둘 다 해야 빠지는 곳이 줄어든다는 사실을 숫자로 보여준다. */}
+        {/* 진행 표시 — 지금 어디고 무엇이 끝났는지. 건너뛴 단계는 완료로 세지 않는다. */}
         <div className="onboard-progress" role="status">
-          <span className={linkDone ? 'is-done' : ''}>
-            {linkDone ? '✓' : '1'} 소셜 연결목록 가져오기
+          {STEPS.map((s, i) => (
+            <span
+              key={s.id}
+              className={applied[s.id] ? 'is-done' : i === index ? 'is-current' : ''}
+            >
+              {applied[s.id] ? '✓' : i + 1} {s.label}
+            </span>
+          ))}
+          <span className="onboard-progress-count">
+            {index + 1}/{STEPS.length}단계
           </span>
-          <span className="sep" aria-hidden="true">·</span>
-          <span className={mailDone ? 'is-done' : ''}>
-            {mailDone ? '✓' : '2'} 메일함에서 찾기
-          </span>
-          <span className="onboard-progress-count">{doneCount}/2 완료</span>
         </div>
 
-        <p className="onboard-guide">
-          두 방법이 찾는 영역이 다릅니다. <strong>소셜 연결목록</strong>은 구글·카카오·네이버로
-          간편가입한 서비스를 잡고, 플랫폼이 준 사실이라 추정이 없습니다.{' '}
-          <strong>메일함</strong>은 가입·인증 메일이 남아 있는 서비스를 찾습니다.{' '}
-          <strong>구글 메일을 주로 쓰지 않으신다면 1번이 훨씬 많이 찾습니다.</strong> 둘 다 하시면
-          빠지는 영역이 줄어듭니다.
-        </p>
+        <div className="auth-head">
+          <h1>{step.title}</h1>
+          <p>{step.guide}</p>
+        </div>
 
-        {/* 1 — 소셜 연결목록. 추가 권한이 필요 없고 플랫폼이 준 사실이라 추정이 아니다.
-            사업계획서 "(다) 단계적 발견 경로"가 사용자 직접 가져오기를 1단계로, 메일 자동 분석을
-            CASA 통과가 필요한 2단계로 못박았다. 화면 순서를 그 단계와 맞춘다. */}
-        <ConnectionImport onApplied={() => setLinkDone(true)} />
-
-        {/* 2 — 메일함. 민감 scope(gmail.readonly)라 "확인되지 않은 앱" 경고를 지나야 한다.
-            첫 관문에 두면 들어오지도 못하고 돌아서는 사람이 생긴다. */}
-        <GmailScan onApplied={() => setMailDone(true)} />
+        {step.id === 'mail' ? (
+          <GmailScan onApplied={() => setApplied((p) => ({ ...p, mail: true }))} />
+        ) : (
+          <ConnectionImport
+            key={step.id}
+            lockedProvider={step.id}
+            onApplied={() => setApplied((p) => ({ ...p, [step.id]: true }))}
+          />
+        )}
 
         <div className="onboard-actions">
           <button
             type="button"
-            className={doneCount > 0 ? 'btn btn-primary' : 'btn'}
-            onClick={() => router.replace(doneCount > 0 ? '/scan' : returnTo)}
+            className={applied[step.id] ? 'btn btn-primary' : 'btn'}
+            onClick={goNext}
           >
-            {doneCount > 0 ? demo.scanning.goInventory : demo.scanning.skip}
+            {isLast
+              ? doneCount > 0
+                ? '찾은 계정 모두 보기'
+                : '건너뛰고 둘러보기'
+              : applied[step.id]
+                ? `다음 · ${STEPS[index + 1].label}`
+                : `${STEPS[index + 1].label} 먼저 하기`}
           </button>
+          {!isLast && (
+            <button
+              type="button"
+              className="linklike"
+              onClick={() => router.replace(returnTo)}
+            >
+              나중에 하고 목록 보기
+            </button>
+          )}
         </div>
 
         <p className="auth-eyebrow">
-          {doneCount === 1
-            ? '한 가지만 하셨어요. 나머지 하나도 하시면 못 찾은 계정이 더 나올 수 있습니다.'
-            : '두 방법으로도 못 찾은 계정은 계정 목록에서 직접 추가할 수 있어요.'}
+          {doneCount === 0
+            ? '한 곳만 해도 됩니다. 나중에 계정 목록에서 이어서 할 수 있어요.'
+            : `${doneCount}곳에서 찾았어요. 남은 단계를 마치면 빠지는 계정이 줄어듭니다.`}
         </p>
       </div>
     </div>
