@@ -12,7 +12,15 @@ const APP = 'erasy-app';
 const EXT = 'erasy-ext';
 
 function announce() {
-  window.postMessage({ source: EXT, type: 'ready', version: '0.1.0' }, window.location.origin);
+  // 지원 제공사를 함께 알린다 — 앱이 "가져오기" 버튼을 어느 탭에 띄울지 여기서 갈린다.
+  // 셀렉터가 확인되지 않은 제공사는 목록에서 빠지므로, 앱은 없는 기능을 광고하지 않는다.
+  chrome.runtime.sendMessage({ type: 'erasy:providers' }, (res) => {
+    const providers = chrome.runtime.lastError ? [] : (res?.providers ?? []);
+    window.postMessage(
+      { source: EXT, type: 'ready', version: '0.2.0', providers },
+      window.location.origin,
+    );
+  });
 }
 
 // 앱 스크립트가 늦게 뜰 수 있어 두 번 알린다(즉시 + 로드 완료 후).
@@ -30,7 +38,7 @@ window.addEventListener('message', (event) => {
   }
 
   if (data.type === 'collect') {
-    chrome.runtime.sendMessage({ type: 'erasy:collect' }, (res) => {
+    chrome.runtime.sendMessage({ type: 'erasy:collect', provider: data.provider }, (res) => {
       const err = chrome.runtime.lastError;
       window.postMessage(
         {

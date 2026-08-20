@@ -12,7 +12,7 @@ const APP = 'erasy-app';
 const EXT = 'erasy-ext';
 
 type ExtMessage =
-  | { source: typeof EXT; type: 'ready'; version?: string }
+  | { source: typeof EXT; type: 'ready'; version?: string; providers?: string[] }
   | {
       source: typeof EXT;
       type: 'collected';
@@ -27,14 +27,19 @@ function isExtMessage(v: unknown): v is ExtMessage {
 }
 
 /**
- * 확장이 있는지 확인한다. 확장은 페이지 로드 시 스스로 ready를 보내지만, 앱이 그보다
- * 늦게 뜨면 그 신호를 놓친다 — 그래서 ping을 한 번 던지고 짧게 기다린다.
+ * 확장이 있는지, 어느 제공사를 자동으로 가져올 수 있는지 확인한다.
+ *
+ * 확장은 페이지 로드 시 스스로 ready를 보내지만 앱이 그보다 늦게 뜨면 그 신호를 놓친다
+ * — 그래서 ping을 한 번 던지고 짧게 기다린다.
+ *
+ * providers를 함께 받는 이유: 셀렉터가 확인되지 않은 제공사까지 버튼을 띄우면 사용자는
+ * 눌러 보고 실패만 겪는다. 확장이 "지금 되는 곳"만 알려 주고 앱은 그대로 따른다.
  */
-export function detectExtension(timeoutMs = 600): Promise<boolean> {
-  if (typeof window === 'undefined') return Promise.resolve(false);
+export function detectExtension(timeoutMs = 800): Promise<string[]> {
+  if (typeof window === 'undefined') return Promise.resolve([]);
   return new Promise((resolve) => {
     let done = false;
-    const finish = (v: boolean) => {
+    const finish = (v: string[]) => {
       if (done) return;
       done = true;
       window.removeEventListener('message', onMessage);
@@ -42,11 +47,11 @@ export function detectExtension(timeoutMs = 600): Promise<boolean> {
     };
     function onMessage(e: MessageEvent) {
       if (e.source !== window || !isExtMessage(e.data)) return;
-      if (e.data.type === 'ready') finish(true);
+      if (e.data.type === 'ready') finish(e.data.providers ?? []);
     }
     window.addEventListener('message', onMessage);
     window.postMessage({ source: APP, type: 'ping' }, window.location.origin);
-    setTimeout(() => finish(false), timeoutMs);
+    setTimeout(() => finish([]), timeoutMs);
   });
 }
 
@@ -56,7 +61,10 @@ export type CollectResult = { ok: true; names: string[] } | { ok: false; error: 
  * 확장에 수집을 요청한다. 확장이 백그라운드 탭으로 연결목록 페이지를 열어 **서비스 이름만**
  * 읽고 탭을 닫는다. 아이디·비밀번호는 이 경로 어디에서도 다루지 않는다.
  */
-export function collectViaExtension(timeoutMs = 20000): Promise<CollectResult> {
+export function collectViaExtension(
+  provider: string,
+  timeoutMs = 25000,
+): Promise<CollectResult> {
   if (typeof window === 'undefined') {
     return Promise.resolve({ ok: false, error: '브라우저에서만 사용할 수 있습니다.' });
   }
@@ -80,7 +88,10 @@ export function collectViaExtension(timeoutMs = 20000): Promise<CollectResult> {
       );
     }
     window.addEventListener('message', onMessage);
-    window.postMessage({ source: APP, type: 'collect', requestId }, window.location.origin);
+    window.postMessage(
+      { source: APP, type: 'collect', requestId, provider },
+      window.location.origin,
+    );
     setTimeout(
       () => finish({ ok: false, error: '시간이 초과됐습니다. 다시 시도해 주세요.' }),
       timeoutMs,

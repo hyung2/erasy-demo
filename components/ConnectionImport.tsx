@@ -68,7 +68,7 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
    * 확장이 설치돼 있으면 자동 수집 경로가 열린다. 없으면 이 버튼 자체가 나타나지 않는다 —
    * 설치하지 않은 사람에게 눌러도 안 되는 버튼을 보여 주면 그게 곧 미완성 인상이 된다.
    */
-  const [hasExtension, setHasExtension] = useState(false);
+  const [extProviders, setExtProviders] = useState<string[]>([]);
   const [collecting, setCollecting] = useState(false);
 
   const parsed = useMemo(() => (text.trim() ? parseConnectionList(text) : null), [text]);
@@ -106,11 +106,11 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
     }
   }, []);
 
-  // 확장 존재 확인 — 구글 탭에서만 의미가 있으므로 provider가 google일 때만 노출한다.
+  // 확장이 자동으로 가져올 수 있는 제공사 목록. 확장이 없으면 빈 배열이라 버튼도 없다.
   useEffect(() => {
     let alive = true;
     void detectExtension().then((v) => {
-      if (alive) setHasExtension(v);
+      if (alive) setExtProviders(v);
     });
     return () => {
       alive = false;
@@ -127,7 +127,7 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
     setError(null);
     setResult(null);
     try {
-      const res = await collectViaExtension();
+      const res = await collectViaExtension(provider);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -280,12 +280,13 @@ export default function ConnectionImport({ onApplied }: { onApplied?: () => void
         ))}
       </div>
 
-      {/* 확장이 있으면 한 번에 가져온다. 없으면 이 블록은 아예 나타나지 않는다. */}
-      {!parsed && hasExtension && provider === 'google' && (
+      {/* 확장이 이 제공사를 지원할 때만 한 번에 가져온다. 아니면 블록 자체가 없다. */}
+      {!parsed && extProviders.includes(provider) && (
         <div className="ext-collect">
           <p className="ext-collect-note">
-            <strong>확장 프로그램이 연결되어 있습니다.</strong> 버튼을 누르면 구글 연결목록을
-            자동으로 가져옵니다. 아이디·비밀번호는 읽지 않고, 서비스 이름만 가져옵니다.
+            <strong>확장 프로그램이 연결되어 있습니다.</strong> 버튼을 누르면 {current.label}{' '}
+            연결목록을 자동으로 가져옵니다. 아이디·비밀번호는 읽지 않고, 서비스 이름만
+            가져옵니다.
           </p>
           <button
             type="button"

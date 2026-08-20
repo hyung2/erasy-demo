@@ -4,7 +4,12 @@
   "version": "0.1.0",
   "description": "구글 계정의 연결된 서비스 목록을 이레이지로 가져옵니다. 아이디·비밀번호는 읽지 않습니다.",
   "permissions": ["tabs", "scripting"],
-  "host_permissions": ["https://myaccount.google.com/*"],
+  "host_permissions": [
+    "https://myaccount.google.com/*",
+    "https://accounts.kakao.com/*",
+    "https://apps.kakao.com/*",
+    "https://nid.naver.com/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
