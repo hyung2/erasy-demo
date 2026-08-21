@@ -1,8 +1,36 @@
 import type { NextConfig } from "next";
 
+// 콘텐츠 보안 정책(CSP).
+//
+// 지금은 **Report-Only**다. 위반을 보고만 하고 막지는 않는다.
+//   08-18에 CSP를 넣지 않은 이유는 "인라인 스타일과 OAuth 왕복을 함께 통과시키려면 실측이
+//   필요한데 동결일에 그 실측 없이 켜면 무대에서 깨진다"였다. 그 판단은 지금도 유효하고,
+//   달라진 것은 시간이 생겼다는 점뿐이다. 그래서 순서를 지킨다 — 먼저 관측하고, 위반이
+//   없는 것을 확인한 뒤에 enforce로 올린다. 켜는 날짜보다 안 깨지는 것이 중요하다.
+//
+// 외부에서 받아오는 것은 jsdelivr 하나뿐이다(SUIT 폰트 · simple-icons 아이콘).
+// 브라우저가 직접 부르는 외부 API는 HIBP range 하나다(비밀번호 해시 앞 5자 대조).
+const cspDirectives = [
+  "default-src 'self'",
+  // Next는 하이드레이션 부트스트랩을 인라인 스크립트로 심는다. nonce로 바꾸려면 미들웨어가
+  // 매 요청 헤더를 다시 써야 해서, 지금 단계에서 얻는 것보다 깨질 자리가 많다.
+  "script-src 'self' 'unsafe-inline'",
+  // 인라인 style 속성 40여 곳(게이지 폭 등 계산값). 정적 클래스로 옮길 수 없는 값들이다.
+  "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+  "font-src 'self' https://cdn.jsdelivr.net data:",
+  "img-src 'self' data: https://cdn.jsdelivr.net",
+  // HIBP range는 브라우저가 직접 부른다 — 비밀번호가 우리 서버를 거치지 않게 하려는 설계라
+  // 여기를 닫으면 그 보장이 깨진다.
+  "connect-src 'self' https://api.pwnedpasswords.com",
+  // X-Frame-Options SAMEORIGIN과 같은 뜻으로 맞춘다(둘이 다르면 frame-ancestors가 이긴다).
+  "frame-ancestors 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+  "report-uri /api/csp-report",
+].join("; ");
+
 // 보안 응답 헤더. 계정 인벤토리를 다루는 화면이라 최소한의 브라우저 측 방어는 켜 둔다.
-// CSP는 넣지 않았다 — 인라인 스타일과 OAuth 리다이렉트를 함께 통과시키려면 실측이 필요한데,
-// 기능 동결일(08-18)에 그 실측 없이 켜면 데모 당일에 깨질 자리가 생긴다. 로드맵으로 남긴다.
 const securityHeaders = [
   // 로그인·인벤토리 화면이 남의 페이지에 끼워져 클릭재킹 미끼가 되지 않게 한다.
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
@@ -16,6 +44,7 @@ const securityHeaders = [
     key: "Strict-Transport-Security",
     value: "max-age=63072000; includeSubDomains; preload",
   },
+  { key: "Content-Security-Policy-Report-Only", value: cspDirectives },
 ];
 
 const nextConfig: NextConfig = {
