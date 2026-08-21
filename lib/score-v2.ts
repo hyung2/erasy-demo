@@ -163,8 +163,24 @@ function isOverseasActive(r: ScoreRowV2): boolean {
 }
 
 // ── 4.1 E — 유출 노출: 100 × ∏(1 − p_breach), 미해결 유출 건별(미제거 계정 한정) ──
-export function computeExposure(rows: ScoreRowV2[]): AxisScore {
+/**
+ * @param opts.checked 유출 대조를 **실제로 수행했는가**(User.breachCheckedAt).
+ *
+ * 기본값이 false인 것은 의도다. 이 값을 넘기지 않는 호출부는 대조 사실을 증명하지
+ * 못한 것이므로 미측정으로 떨어진다. 반대로 두면(기본 true) 새 호출부가 생길 때마다
+ * 조용히 만점이 부활한다 — 거부 목록이 값이 늘면 뚫리던 08-04의 재현이다.
+ *
+ * 2026-08-21 이전에는 `measured = rows.length > 0`이었다. 계정이 하나라도 있으면
+ * 대조를 한 적 없어도 유출 0건 → 만점이 나왔고, 가중치가 가장 큰 축(0.35)이
+ * 근거 없이 종합 점수를 떠받쳤다. 같은 자리 주석은 "MVP 시드는 전수 대조 = 1.0"이라고
+ * 그 사실을 적어 두고 있었으나, 적혀 있다는 이유로 재검토를 면제받았다.
+ */
+export function computeExposure(
+  rows: ScoreRowV2[],
+  opts: { checked?: boolean } = {},
+): AxisScore {
   const P = SCORE_V2_PARAMS;
+  const checked = opts.checked ?? false;
   let survival = 1;
   let breachCount = 0;
   for (const r of rows) {
@@ -174,17 +190,21 @@ export function computeExposure(rows: ScoreRowV2[]): AxisScore {
     breachCount += 1;
   }
   const total = rows.length;
-  // coverage: 유출 대조 수행 계정(MVP 시드는 전수 대조 = 1.0).
-  const measured = total > 0;
+  // coverage: 유출 대조는 이메일 단위로 한 번에 이뤄진다. 수행했으면 보유 계정 전체가
+  // 그 결과의 사정권에 들어오므로 1.0, 수행하지 않았으면 0이다.
+  const measured = checked && total > 0;
   return {
     key: 'exposure',
     score: measured ? 100 * survival : null,
     measured,
-    coveredCount: total,
+    coveredCount: measured ? total : 0,
     totalCount: total,
-    coverage: total === 0 ? 0 : 1,
-    topFinding:
-      breachCount > 0 ? `미해결 유출 ${breachCount}건 — 여기가 뚫린 문이에요` : null,
+    coverage: measured ? 1 : 0,
+    topFinding: !checked
+      ? '아직 유출 대조를 하지 않았어요'
+      : breachCount > 0
+        ? `미해결 유출 ${breachCount}건 — 여기가 뚫린 문이에요`
+        : null,
   };
 }
 
@@ -397,10 +417,19 @@ export function deriveGrade(score: number): Grade {
   return score >= 80 ? '양호' : score >= 50 ? '주의' : '위험';
 }
 
+/**
+ * 축 산출에 필요한, rows만으로는 알 수 없는 사실.
+ * 지금은 유출 대조 수행 여부 하나뿐이지만, 같은 성격의 값이 늘면 여기로 모은다.
+ */
+export type ScoreContext = { checked?: boolean };
+
 // ── 4장 전체: rows → 4축 산출 ──
-export function computeAxes(rows: ScoreRowV2[]): Record<AxisKey, AxisScore> {
+export function computeAxes(
+  rows: ScoreRowV2[],
+  ctx: ScoreContext = {},
+): Record<AxisKey, AxisScore> {
   return {
-    exposure: computeExposure(rows),
+    exposure: computeExposure(rows, { checked: ctx.checked }),
     surface: computeSurface(rows),
     hygiene: computeHygiene(rows),
     threat: computeThreat(rows),
@@ -408,8 +437,10 @@ export function computeAxes(rows: ScoreRowV2[]): Record<AxisKey, AxisScore> {
 }
 
 // 종합만 빠르게(시뮬레이션·expectedGain 내부용)
-export function computeComposite(rows: ScoreRowV2[]): number | null {
-  const axes = computeAxes(rows);
+// ctx를 그대로 물려야 한다 — 시뮬레이션이 대조 사실을 잃으면 "정리하면 오를 점수"가
+// 실제 화면 점수와 다른 축 구성으로 계산된다.
+export function computeComposite(rows: ScoreRowV2[], ctx: ScoreContext = {}): number | null {
+  const axes = computeAxes(rows, ctx);
   return blend([axes.exposure, axes.surface, axes.hygiene, axes.threat]).composite;
 }
 
@@ -455,9 +486,10 @@ function expectedGain(
   base: number | null,
   actionType: ActionType,
   targetIndices: number[],
+  ctx: ScoreContext = {},
 ): number {
   if (base === null || targetIndices.length === 0) return 0;
-  const after = computeComposite(applyAction(rows, actionType, targetIndices));
+  const after = computeComposite(applyAction(rows, actionType, targetIndices), ctx);
   if (after === null) return 0;
   return Math.max(0, after - base); // 회복은 절대 하락 없음 — 음수 clamp
 }
@@ -500,8 +532,8 @@ const WEAKEST_ACTION: Record<AxisKey, ActionType> = {
 };
 
 // ── 엔진 본체: rows → 종합·4축·최약축·추천액션·expectedGain 목록 ──
-export function scoreV2(rows: ScoreRowV2[]): ScoreV2Result {
-  const axes = computeAxes(rows);
+export function scoreV2(rows: ScoreRowV2[], ctx: ScoreContext = {}): ScoreV2Result {
+  const axes = computeAxes(rows, ctx);
   const { composite, weakestAxis, measured } = blend([
     axes.exposure,
     axes.surface,
@@ -533,7 +565,7 @@ export function scoreV2(rows: ScoreRowV2[]): ScoreV2Result {
       axis: axisOfLever[lever],
       actionType: lever,
       accountIndices: targets,
-      expectedGain: expectedGain(rows, composite, lever, targets),
+      expectedGain: expectedGain(rows, composite, lever, targets, ctx),
     });
   }
 
@@ -546,7 +578,7 @@ export function scoreV2(rows: ScoreRowV2[]): ScoreV2Result {
         axis: weakestAxis,
         actionType,
         accountIndices: targets,
-        expectedGain: expectedGain(rows, composite, actionType, targets),
+        expectedGain: expectedGain(rows, composite, actionType, targets, ctx),
       };
     }
   }

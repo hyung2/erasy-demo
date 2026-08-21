@@ -95,6 +95,13 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // 유출 대조를 실제로 수행한 시각. null = 한 번도 대조하지 않음.
+  //
+  // 이 필드가 없으면 "대조했는데 깨끗함"과 "대조한 적 없음"을 구분할 수 없고,
+  // 그 둘이 같아지는 순간 E축은 계정만 있으면 만점을 준다(2026-08-21 이전 상태).
+  // Breach 레코드의 유무로는 대신할 수 없다 — 유출이 없는 사용자는 어느 쪽이든 0건이다.
+  breachCheckedAt DateTime?
+
   accounts        Account[]
   cleanupRequests CleanupRequest[]
   breaches        Breach[]

@@ -220,7 +220,8 @@ function buildRows(userId: string, idPrefix: string) {
   // 점수 스냅샷 이력 — 각 시점 상태를 v2 엔진으로 재계산(하드코딩 아님).
   // axes를 반드시 채운다: axes null 스냅샷은 v1 잔재로 취급돼 purge 대상이었다.
   const snapshotRows = SNAPSHOT_POINTS.map((p) => {
-    const v2 = scoreV2(rowsAt(p.daysAgo));
+    // 시드 인물은 유출 이력까지 갖춘 완성된 상태다 — 대조를 마친 것으로 취급한다.
+    const v2 = scoreV2(rowsAt(p.daysAgo), { checked: true });
     return {
       id: id(p.key),
       userId,

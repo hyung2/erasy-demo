@@ -106,6 +106,13 @@ export type BreachDTO = {
 export type GuardDTO = {
   alerts: AlertDTO[];
   breaches: BreachDTO[];
+  /**
+   * 유출 대조를 마지막으로 수행한 시각(ISO). null이면 한 번도 하지 않았다는 뜻이다.
+   *
+   * 화면이 "유출 없음"과 "아직 안 봤음"을 구분하려면 이 값이 필요하다. 둘을 같은 문장으로
+   * 말하면 아무것도 대조하지 않은 사람에게 안심을 파는 셈이 된다.
+   */
+  breachCheckedAt: string | null;
 };
 
 // GET /api/accounts/[id]/access — 접속기록

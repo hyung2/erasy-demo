@@ -13,6 +13,7 @@ import {
   type AxesSnapshot,
   type ExpectedGainItem,
   type Grade,
+  type ScoreContext,
 } from './score-v2';
 import {
   accounts as dummyAccounts,
@@ -264,6 +265,7 @@ function computeCleaned(
   rows: DbAccountRow[],
   engineRows: ScoreRowV2[],
   after: number,
+  ctx: ScoreContext,
 ): ScoreServiceResult['cleaned'] {
   const completed = rows.filter((r) =>
     r.cleanupRequests.some(
@@ -279,33 +281,48 @@ function computeCleaned(
     passwordChanged: false,
     sessionsCleared: false,
   }));
-  const before = scoreV2(asIfUncleaned).composite ?? 0;
+  const before = scoreV2(asIfUncleaned, ctx).composite ?? 0;
   return { completedCount: completed, before, after, gain: after - before };
 }
 
 export async function getScoreForUser(userId: string): Promise<ScoreServiceResult> {
   try {
-    const rows = await queryAccounts(userId);
+    // 유출 대조 수행 여부는 계정 행에 없다. 이 한 건이 E축의 측정/미측정을 가른다.
+    const [rows, user] = await Promise.all([
+      queryAccounts(userId),
+      prisma.user.findUnique({ where: { id: userId }, select: { breachCheckedAt: true } }),
+    ]);
+    const ctx: ScoreContext = { checked: user?.breachCheckedAt != null };
 
     // 실계정 0건 → 빈 상태. 예전에는 시드 유저 데이터로 폴백했는데, 그러면 방금 가입한
     // 사람에게 남의 계정 24개가 자기 점수로 표시된다. 아직 아무것도 못 찾은 것은
     // "측정 불가"이지 "24점"이 아니므로, 화면이 그 사실을 받도록 빈 결과를 돌려준다.
     // (DB 자체가 죽은 경우는 아래 catch가 따로 받는다 — 장애 무중단은 그대로 유지)
     if (rows.length === 0) {
-      return buildResult(scoreV2([]), 'empty', 0, null, [], projectRecovery({ rows: [], deleteIdx: [] }));
+      return buildResult(
+        scoreV2([], ctx),
+        'empty',
+        0,
+        null,
+        [],
+        projectRecovery({ rows: [], deleteIdx: [] }, ctx),
+      );
     }
 
     const engineRows = rows.map(toRowV2);
-    const v2 = scoreV2(engineRows);
+    const v2 = scoreV2(engineRows, ctx);
     // 회복 투영은 점수와 **같은 rows**로 계산한다. 다른 입력을 쓰면 대시보드와 결과 화면의
     // 출발점이 어긋난다. 삭제 표적은 이 사용자가 실제로 담아 둔 미완료 정리 요청뿐이다.
-    const recovery = projectRecovery({
-      rows: engineRows,
-      deleteIdx: rows.reduce<number[]>((acc, r, i) => {
-        if (hasPendingRemoval(r)) acc.push(i);
-        return acc;
-      }, []),
-    });
+    const recovery = projectRecovery(
+      {
+        rows: engineRows,
+        deleteIdx: rows.reduce<number[]>((acc, r, i) => {
+          if (hasPendingRemoval(r)) acc.push(i);
+          return acc;
+        }, []),
+      },
+      ctx,
+    );
     const { delta, trend, trendPoints } = await appendSnapshotAndTrend(
       userId,
       v2.composite ?? 0,
@@ -321,7 +338,7 @@ export async function getScoreForUser(userId: string): Promise<ScoreServiceResul
       trend,
       trendPoints,
       recovery,
-      computeCleaned(rows, engineRows, v2.composite ?? 0),
+      computeCleaned(rows, engineRows, v2.composite ?? 0, ctx),
     );
   } catch (e) {
     // DB 미연결 → 메모리 폴백(동일 엔진·시드 신호. 스냅샷 불가 → 추이 1점, T 미측정).
@@ -329,6 +346,16 @@ export async function getScoreForUser(userId: string): Promise<ScoreServiceResul
     // 이력 없음 → trendPoints 빈 배열. 차트는 "쌓이면 보여드려요"로 방어(가짜 선 금지).
     // 메모리 폴백은 입력이 시드 신호이므로 투영도 시드 경로를 쓴다(점수와 입력 일치 유지).
     // fallback 표기가 'memory'로 내려가므로 화면이 이 상태를 숨기지 않는다.
-    return buildResult(scoreV2(memoryRowsV2()), 'memory', 0, null, [], projectRecovery());
+    // 메모리 폴백은 시드 신호를 쓴다. 시드는 유출 이력까지 갖춘 완성된 가상 인물이라
+    // 대조를 마친 상태로 취급한다(checked: true). 여기서 미측정으로 떨어뜨리면
+    // DB 장애 화면이 "점수를 낼 수 없다"로 바뀌어, 무중단 폴백의 목적 자체가 사라진다.
+    return buildResult(
+      scoreV2(memoryRowsV2(), { checked: true }),
+      'memory',
+      0,
+      null,
+      [],
+      projectRecovery(undefined, { checked: true }),
+    );
   }
 }

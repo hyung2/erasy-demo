@@ -8,9 +8,9 @@
 //       (5) M3 분모 0 재정규화(manualAccounts=0 / passwordHolders=0)
 import assert from 'node:assert/strict';
 import {
-  scoreV2,
-  computeAxes,
-  computeComposite,
+  scoreV2 as scoreV2Raw,
+  computeAxes as computeAxesRaw,
+  computeComposite as computeCompositeRaw,
   computeHygiene,
   computeThreat,
   blend,
@@ -19,8 +19,19 @@ import {
   type ScoreRowV2,
   type AxisScore,
 } from '../lib/score-v2';
+
+// 이 픽스처의 전제는 **시드 인물**이다 — 유출 이력이 이미 확정된, 대조를 마친 상태.
+// 2026-08-21에 E축이 "대조를 실제로 했는가"를 요구하게 되면서 그 사실을 명시해야 한다.
+// 진입점에서 한 번 감싸 본문의 기존 호출을 그대로 둔다. 호출마다 인자를 붙이면
+// 하나만 빠져도 그 단언이 조용히 다른 축 구성으로 계산된다.
+const SEED_CTX = { checked: true } as const;
+const scoreV2 = (rows: ScoreRowV2[]) => scoreV2Raw(rows, SEED_CTX);
+const computeAxes = (rows: ScoreRowV2[]) => computeAxesRaw(rows, SEED_CTX);
+const computeComposite = (rows: ScoreRowV2[]) => computeCompositeRaw(rows, SEED_CTX);
+const projectRecovery = (...args: Parameters<typeof projectRecoveryRaw>) =>
+  projectRecoveryRaw(args[0], SEED_CTX);
 import { accounts, breaches, deleteRequests } from '../lib/dummy-data';
-import { projectRecovery } from '../lib/score-projection';
+import { projectRecovery as projectRecoveryRaw } from '../lib/score-projection';
 
 let passed = 0;
 function check(cond: boolean, msg: string): void {

@@ -9,6 +9,7 @@ import {
   type ScoreRowV2,
   type AxisKey,
   type AxisScore,
+  type ScoreContext,
 } from './score-v2';
 import {
   accounts as dummyAccounts,
@@ -100,7 +101,10 @@ function seedInput(): ProjectionInput {
  *    applyAction이 자격 조건(재사용 보유·유출 미해결·이상접속·manual+2FA미설정)으로
  *    스스로 거른다. delete를 먼저 적용하므로 삭제된 계정은 자동 제외된다.
  */
-export function projectRecovery(input?: ProjectionInput): RecoveryProjection {
+export function projectRecovery(
+  input?: ProjectionInput,
+  ctx: ScoreContext = {},
+): RecoveryProjection {
   const { rows: before, deleteIdx } = input ?? seedInput();
 
   const s1 = applyAction(before, 'password_change'); // 재사용 계정 비밀번호 교체
@@ -109,8 +113,10 @@ export function projectRecovery(input?: ProjectionInput): RecoveryProjection {
   const s4 = applyAction(s3, 'delete', deleteIdx); // 정리 큐 완료
   const after = applyAction(s4, 'enable_2fa'); // 남은 manual 계정 2FA 설정
 
-  const beforeAxes = computeAxes(before);
-  const afterAxes = computeAxes(after);
+  // before·after 모두 같은 ctx로 계산해야 한다. 한쪽만 대조 사실을 가지면 축 구성이
+  // 달라져 "정리하면 오를 폭"에 축이 하나 생겼다 사라지는 몫이 섞인다.
+  const beforeAxes = computeAxes(before, ctx);
+  const afterAxes = computeAxes(after, ctx);
   return {
     beforeComposite: composite(beforeAxes),
     afterComposite: composite(afterAxes),

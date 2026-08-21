@@ -21,12 +21,13 @@ export async function GET() {
 
   try {
     // 소유권 경계: where userId 스코핑(IDOR 차단).
-    const [rows, alerts] = await Promise.all([
+    const [rows, alerts, user] = await Promise.all([
       prisma.breach.findMany({
         where: { userId },
         orderBy: [{ resolved: 'asc' }, { breachDate: 'desc' }],
       }),
       buildActivityFeed(prisma, userId),
+      prisma.user.findUnique({ where: { id: userId }, select: { breachCheckedAt: true } }),
     ]);
 
     const breaches: BreachDTO[] = rows.map((b) => ({
@@ -40,7 +41,11 @@ export async function GET() {
       resolved: b.resolved,
     }));
 
-    const data: GuardDTO = { alerts, breaches };
+    const data: GuardDTO = {
+      alerts,
+      breaches,
+      breachCheckedAt: user?.breachCheckedAt?.toISOString() ?? null,
+    };
     return Response.json({ data } satisfies ApiEnvelope<GuardDTO>);
   } catch (e) {
     // DB 미연결 — 남의 데이터로 채우느니 빈 상태를 준다. 화면이 "아직 없다"고 말하는 편이

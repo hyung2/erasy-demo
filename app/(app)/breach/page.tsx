@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ServiceAvatar } from '@/components/ServiceAvatar';
 import { BreachPasswordCheck } from '@/components/BreachPasswordCheck';
+import { BreachLookup } from '@/components/BreachLookup';
 import NextStep from '@/components/NextStep';
-import type { BreachDTO } from '@/lib/api-types';
+import type { BreachDTO, GuardDTO } from '@/lib/api-types';
 
 const sevLabel = { high: '높음', mid: '중간', low: '낮음' } as const;
 
@@ -14,17 +15,23 @@ export default function BreachPage() {
   // 유출 이력은 **이 사용자 것만** 받는다. 예전에는 dummy-data를 직접 읽어서, 방금 가입한
   // 사람에게도 "Quora 2018-12 유출"이 자기 이력으로 떴다.
   const [breaches, setBreaches] = useState<BreachDTO[]>([]);
+  const [checkedAt, setCheckedAt] = useState<string | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
 
-  useEffect(() => {
+  const load = useCallback(() => {
     fetch('/api/guard')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((body: { data: { breaches: BreachDTO[] } }) => {
+      .then((body: { data: GuardDTO }) => {
         setBreaches(body.data.breaches ?? []);
+        setCheckedAt(body.data.breachCheckedAt ?? null);
         setLoadState('ready');
       })
       .catch(() => setLoadState('error'));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const active = breaches.filter((b) => !b.resolved);
   const resolved = breaches.filter((b) => b.resolved);
@@ -48,11 +55,26 @@ export default function BreachPage() {
       ) : loadState === 'ready' && active.length === 0 ? (
         <section className="panel" role="status">
           <div className="alert-body">
-            <h2>아직 확인된 유출이 없어요</h2>
-            <p className="score-sub">
-              유출 이력은 계정을 찾아 대조해야 알 수 있어요. 아래에서 쓰는 비밀번호가 이미
-              유출된 적 있는지 지금 바로 검사해 볼 수 있습니다.
-            </p>
+            {/* 대조 전과 후는 다른 상태다. 한 번도 안 봤는데 "유출이 없다"고 말하면
+                아무것도 확인하지 않은 사람에게 안심을 파는 셈이 된다. */}
+            {checkedAt ? (
+              <>
+                <h2>대조한 범위에서는 유출이 없어요</h2>
+                <p className="score-sub">
+                  {new Date(checkedAt).toLocaleDateString('ko-KR')}에 대조했고, 공개된 유출
+                  사건에서 이 주소를 찾지 못했습니다. 공개되지 않은 유출까지 없다는 뜻은
+                  아닙니다.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2>아직 유출 대조를 하지 않았어요</h2>
+                <p className="score-sub">
+                  대조하기 전까지는 유출 항목을 점수에 넣지 않습니다. 모르는 것을
+                  &ldquo;안전하다&rdquo;로 세지 않기 위해서입니다.
+                </p>
+              </>
+            )}
           </div>
         </section>
       ) : (
@@ -66,6 +88,9 @@ export default function BreachPage() {
           </section>
         )
       )}
+
+      {/* 이메일 단위 유출 대조 (HIBP breachedaccount · E축 데이터를 만드는 유일한 경로) */}
+      <BreachLookup checkedAt={checkedAt} onDone={load} />
 
       {/* 비밀번호 유출 실측 검사 (HIBP range · 점수 무관 독립 시연) */}
       <BreachPasswordCheck />
