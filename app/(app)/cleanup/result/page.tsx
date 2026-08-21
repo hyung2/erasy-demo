@@ -167,7 +167,15 @@ export default function CleanupResultPage() {
       {/* 축별 상승 */}
       <h2 className="section-label">무엇이 좋아졌나</h2>
       <div className="axis-delta-list panel">
-        {proj.axisKeys.map((key) => {
+        {proj.axisKeys
+          // 비밀번호 습관은 비밀번호를 저장하지 않는 한 잴 수 없어 카드에서 숨긴다
+          // (대시보드 visibleAxes와 같은 규칙). 산식에는 그대로 남아 있다.
+          .filter(
+            (key) =>
+              key !== 'hygiene' ||
+              (proj.beforeAxes.hygiene.measured && proj.afterAxes.hygiene.measured),
+          )
+          .map((key) => {
           const b = proj.beforeAxes[key];
           const a = proj.afterAxes[key];
           const meta = AXIS_META[key];

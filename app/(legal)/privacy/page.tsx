@@ -88,7 +88,7 @@ export default function PrivacyPage() {
               </tr>
               <tr>
                 <td>진단 이력</td>
-                <td>안전도 점수, 확인된 계정 비율, 네 개 축의 값</td>
+                <td>안전도 점수, 확인된 계정 비율, 진단 축별 값</td>
                 <td>점수를 계산할 때</td>
               </tr>
             </tbody>

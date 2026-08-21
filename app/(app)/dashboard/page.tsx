@@ -58,15 +58,29 @@ const AXIS_META: Record<AxisKey, { label: string }> = {
 const AXIS_ORDER: AxisKey[] = ['exposure', 'surface', 'hygiene', 'threat'];
 
 /**
- * 측정하지 못한 축이 그 사실을 설명하는 문장.
+ * 화면에 세울 축을 고른다.
  *
- * 못 재는 이유가 축마다 다르다. 비밀번호 습관은 **우리가 비밀번호를 저장하지 않기 때문에**
- * 원칙상 알 수 없고(그 대가로 얻는 것이 안전이다), 이상 접속은 아직 볼 기록이 없는 것이다.
- * 둘을 "근거 부족" 한 마디로 묶으면 사용자는 우리가 게을러서인지 원래 못 재는 것인지
+ * 비밀번호 습관은 **우리가 비밀번호를 저장하지 않는 한 잴 수 없다.** 사용자가 계정마다
+ * 표를 채워 주면 되지만 그건 이 제품이 하기로 한 일이 아니다(2026-08-21 결정).
+ * 잴 길이 없는 축을 카드로 세워 두면 화면이 영구 미완성으로 보이므로 숨긴다.
+ *
+ * 다만 **산식에서는 빼지 않았다.** blend()가 측정된 축만 재정규화하므로 점수에 영향이 없고,
+ * 축을 지우면 비밀번호 교체·2단계 인증이라는 회복 액션 두 개가 함께 사라진다.
+ * 보안 제품이 가장 기본적인 조언을 못 하게 되는 대가는 화면 카드 한 장보다 크다.
+ *
+ * 조건을 `measured`로 둔 이유: 나중에 비밀번호 신호를 얻는 경로가 생기면 이 축은
+ * 손댈 필요 없이 스스로 돌아온다.
+ */
+function visibleAxes(axes: Record<AxisKey, { measured: boolean }>): AxisKey[] {
+  return AXIS_ORDER.filter((k) => k !== 'hygiene' || axes.hygiene.measured);
+}
+
+/**
+ * 측정하지 못한 축이 그 사실을 설명하는 문장.
+ * "근거 부족"으로만 적어 두면 사용자는 우리가 게을러서인지 아직 볼 것이 없는 것인지
  * 구분할 수 없고, 못 재는 것을 두고 자기가 뭘 잘못했나 생각하게 된다.
  */
 const AXIS_UNMEASURED: Partial<Record<AxisKey, string>> = {
-  hygiene: '비밀번호를 저장하지 않아 이 항목은 재지 않습니다',
   threat: '아직 확인된 접속 기록이 없어요',
 };
 
@@ -254,6 +268,8 @@ export default function DashboardPage() {
   // 4축 진단·추천은 API가 준비된 경우 노출. 정리 요청을 접수했다고 숨기지 않는다 —
   //   담기는 조치가 아니므로 취약 축은 그대로 남아 있고, 화면이 그걸 감추면 안 된다.
   const showDiagnostics = loadState === 'ready' && dto !== null;
+  // 잴 수 있는 축만 카드로 세운다(위 visibleAxes 주석 참조). 산식은 4축 그대로다.
+  const axesToShow = dto ? visibleAxes(dto.axes) : AXIS_ORDER;
   const weakestAxis = dto?.weakestAxis ?? null;
 
   // 추천 액션: 기대 상승폭 내림차순, 최약축 액션 우선. 상위 3개만.
@@ -362,12 +378,12 @@ export default function DashboardPage() {
         )}
       </section>
 
-      {/* 4축 안전 진단(유출·방치·위생·위협) — 미측정 축은 정직하게 "확인 불가" */}
+      {/* 안전 진단 — 잴 수 있는 축만 세운다. 미측정 축은 이유를 밝혀 표기한다. */}
       {showDiagnostics && (
         <>
-          <h2 className="section-label">안전 진단 · 4축</h2>
+          <h2 className="section-label">안전 진단 · {axesToShow.length}축</h2>
           <div className="stat-grid">
-            {AXIS_ORDER.map((key) => {
+            {axesToShow.map((key) => {
               const a = dto!.axes[key];
               const meta = AXIS_META[key];
               const isWeakest = key === weakestAxis;
