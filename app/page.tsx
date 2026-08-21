@@ -3,8 +3,9 @@
 // 로그인 진입. 두 경로가 같은 결과 상태로 착지한다.
 //  (1) 구글로 시작하기 → 실 Google OAuth(Auth.js v5, 최소 scope)
 //  (2) 이메일로 가입/로그인 → /api/register + credentials signIn
-// 어느 쪽이든 첫 진입 시 본인 소유 데모 데이터 24계정이 프로비저닝된 뒤 /scanning → /dashboard.
+// 어느 쪽이든 첫 진입 시 빈 진단 화면에서 시작한다(08-18에 데모 데이터 프로비저닝 제거).
 import { useState } from 'react';
+import Link from 'next/link';
 import { signIn } from 'next-auth/react';
 import { brand, demo } from '@/content/copy';
 
@@ -195,6 +196,14 @@ export default function LoginPage() {
         </div>
 
         <p className="auth-disclaimer">{copy.disclaimer}</p>
+
+        {/* 가입 전에 무엇이 수집되는지 읽을 수 있어야 한다. 세로 569px 접힘(2026-08-03)을
+            건드리지 않도록 한 줄·작은 글자로만 붙인다. */}
+        <p className="auth-legal">
+          <Link href="/privacy">개인정보처리방침</Link>
+          <span aria-hidden="true">·</span>
+          <Link href="/terms">이용약관</Link>
+        </p>
       </div>
     </div>
   );

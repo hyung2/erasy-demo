@@ -1762,6 +1762,18 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 }
 .auth-disclaimer { color: var(--text-mute); font-size: 0.8125rem; text-align: center; line-height: 1.7; }
 
+/* 방침·약관 링크. 수직 리듬을 거의 쓰지 않도록 한 줄 고정. */
+.auth-legal {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.75rem;
+}
+.auth-legal a { color: var(--text-dim); text-decoration: none; }
+.auth-legal a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.auth-legal span { color: var(--text-mute); }
+
 /* 낮은 뷰포트 대응 — 첫 화면에서 가입·로그인 버튼이 접히지 않게 수직 리듬을 압축한다.
    왜 필요한가: 세로 569px에서 가입 탭 제출 버튼이 top 543(높이 52)에 놓여 27px 잘렸다.
    작은 창으로 여는 심사위원의 첫 화면에 기본 동선 CTA가 안 보이는 상태였다(2026-08-03 실측).
@@ -1845,5 +1857,257 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
     transition-duration: 0.01ms !important;
     transition-delay: 0s !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   약관 · 방침 (공개 문서)
+   읽히는 것이 목적이라 본문 폭을 68ch로 묶고 행간을 넉넉히 준다.
+   앱 화면과 같은 팔레트를 쓰되 패널을 겹치지 않아 문서처럼 보이게.
+   ============================================================ */
+.legal-shell {
+  min-height: 100vh;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.legal-header {
+  border-bottom: 1px solid var(--border);
+  background: rgba(var(--bg-rgb), 0.85);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.legal-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 60px;
+}
+
+.legal-logo {
+  font-weight: 700;
+  font-size: 1.0625rem;
+  color: var(--text);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+
+.legal-nav {
+  display: flex;
+  gap: 18px;
+  margin-left: auto;
+  font-size: 0.875rem;
+}
+
+.legal-nav a {
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.legal-nav a:hover {
+  color: var(--text);
+}
+
+.legal-main {
+  flex: 1;
+  padding: 56px 24px 96px;
+}
+
+.legal-doc {
+  max-width: 68ch;
+  margin: 0 auto;
+  color: var(--text-dim);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+}
+
+.legal-doc-head {
+  margin-bottom: 40px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.legal-doc h1 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+
+.legal-updated {
+  font-size: 0.8125rem;
+  color: var(--text-mute);
+}
+
+.legal-doc h2 {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 12px;
+  letter-spacing: -0.01em;
+}
+
+.legal-doc p {
+  margin-bottom: 12px;
+}
+
+.legal-doc strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.legal-doc em {
+  font-style: normal;
+  color: var(--text);
+}
+
+.legal-doc a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* 전역 `section { padding: 96px 0 }`은 랜딩 히어로용이다. 문서에서는 그 리듬이
+   섹션마다 화면 한 판씩 비워 버리므로 여기서 끊고 문서용 간격으로 다시 잡는다. */
+.legal-section,
+.legal-summary {
+  padding: 0;
+}
+
+.legal-section {
+  margin-bottom: 40px;
+}
+
+.legal-summary {
+  padding: 24px 26px;
+}
+
+.legal-section > *:last-child {
+  margin-bottom: 0;
+}
+
+/* 요약 블록 — 문서 첫머리에서 결론부터 준다. */
+.legal-summary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px 26px;
+  margin-bottom: 44px;
+}
+
+.legal-summary h2 {
+  font-size: 0.8125rem;
+  color: var(--text-mute);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  margin-bottom: 14px;
+}
+
+.legal-summary ul,
+.legal-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.legal-summary li,
+.legal-list li {
+  padding-left: 16px;
+  position: relative;
+}
+
+.legal-summary li::before,
+.legal-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.7em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.legal-list li::before {
+  background: var(--text-mute);
+}
+
+.legal-note {
+  color: var(--text-mute);
+  font-size: 0.875rem;
+  border-left: 2px solid var(--border-strong);
+  padding-left: 14px;
+}
+
+/* 표 — 좁은 화면에서 페이지 자체가 가로로 밀리지 않도록 표만 스크롤한다.
+   본문은 68ch로 묶여 있지만 표는 3열이라 그 폭에서 셀마다 네댓 줄로 접힌다.
+   표만 본문 밖으로 양쪽 대칭으로 넓혀 읽히게 하고, 공간이 없으면 그대로 줄어든다. */
+.legal-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+  width: min(100vw - 48px, 940px);
+  margin-left: 50%;
+  transform: translateX(-50%);
+}
+
+.legal-table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.legal-table th,
+.legal-table td {
+  padding: 12px 16px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.legal-table thead th {
+  color: var(--text-mute);
+  font-weight: 500;
+  font-size: 0.8125rem;
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+.legal-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.legal-table td:first-child {
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.legal-footer {
+  border-top: 1px solid var(--border);
+  padding: 24px 0;
+  color: var(--text-mute);
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 640px) {
+  .legal-main {
+    padding: 36px 20px 72px;
+  }
+
+  .legal-doc h1 {
+    font-size: 1.5rem;
+  }
+
+  .legal-summary {
+    padding: 20px;
   }
 }
