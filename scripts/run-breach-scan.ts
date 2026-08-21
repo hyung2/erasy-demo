@@ -9,7 +9,7 @@
 // 쓰기 작업이다. DB에 Breach가 쌓이고 breachCheckedAt이 남는다 — 실행 전 백업을 확인할 것
 // (scripts/backup-db.ts).
 import { PrismaClient } from '@prisma/client';
-import { syncUserBreaches } from '../lib/breach-sync';
+import { syncUserBreaches, checkRescanCooldown } from '../lib/breach-sync';
 import { isBreachLookupConfigured } from '../lib/hibp-breaches';
 
 const prisma = new PrismaClient();
@@ -30,6 +30,15 @@ async function main() {
   if (!user) throw new Error(`사용자를 찾을 수 없습니다: ${email}`);
 
   console.log(`대상: ${user.email} (이전 대조: ${user.breachCheckedAt?.toISOString() ?? '없음'})`);
+
+  // 화면 경로(POST /api/breach/scan)에는 쿨다운이 걸린다. 이 스크립트는 운영 도구라
+  // 그 게이트를 지나가지만, 지금 화면에서 눌렀다면 어떻게 됐을지는 함께 찍어 둔다.
+  const cd = await checkRescanCooldown(user.id);
+  console.log(
+    cd.allowed
+      ? '쿨다운: 통과(화면에서도 지금 대조 가능)'
+      : `쿨다운: 대기 ${cd.retryAfterSeconds}초 — 화면에서는 429로 막힌다`,
+  );
 
   const result = await syncUserBreaches(user.id, user.email);
   console.log(

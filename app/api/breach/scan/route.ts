@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 import { prisma } from '@/lib/prisma';
 import { resolveSessionUser } from '@/lib/session-user';
-import { syncUserBreaches } from '@/lib/breach-sync';
+import { syncUserBreaches, checkRescanCooldown } from '@/lib/breach-sync';
 import { BreachLookupError, isBreachLookupConfigured } from '@/lib/hibp-breaches';
 
 export async function POST() {
@@ -31,6 +31,20 @@ export async function POST() {
         reason: 'unconfigured',
       },
       { status: 503 },
+    );
+  }
+
+  // 유료 API를 부르는 경로라 연타를 막는다. 인메모리 카운터 대신 마지막 대조 시각을
+  // 쓰는 이유는 서버리스에서 그게 인스턴스와 무관한 단일 사실이기 때문이다.
+  const cooldown = await checkRescanCooldown(sessionUser.userId);
+  if (!cooldown.allowed) {
+    return Response.json(
+      {
+        ok: false,
+        error: `방금 대조했어요. ${Math.ceil(cooldown.retryAfterSeconds / 60)}분 뒤에 다시 시도해 주세요.`,
+        reason: 'cooldown',
+      },
+      { status: 429, headers: { 'retry-after': String(cooldown.retryAfterSeconds) } },
     );
   }
 

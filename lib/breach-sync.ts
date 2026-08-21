@@ -123,6 +123,36 @@ export async function syncUserBreaches(userId: string, email: string): Promise<B
   };
 }
 
+/**
+ * 재대조 쿨다운(분).
+ *
+ * 이 조회는 **유료 API를 부른다.** 버튼을 연타하면 그대로 비용이고, 남이 우리 키로
+ * 호출량을 태우는 경로가 된다. 서버리스에서 인메모리 카운터는 인스턴스마다 갈려
+ * 실효가 없지만(2026-08-18 판단), 여기서는 그럴 필요가 없다 — 마지막 대조 시각이
+ * 이미 DB에 있고, 그게 인스턴스와 무관한 단일 사실이다.
+ *
+ * 10분으로 둔 이유: 유출 사건은 그보다 자주 늘지 않는다. 리허설에서 몇 번 눌러 보는
+ * 것은 막지 않으면서 연타는 걸러지는 폭이다.
+ */
+export const RESCAN_COOLDOWN_MINUTES = 10;
+
+export type CooldownState = { allowed: boolean; retryAfterSeconds: number };
+
+/** 지금 다시 대조해도 되는가. 남은 시간을 함께 돌려줘 화면이 사실대로 말할 수 있게 한다. */
+export async function checkRescanCooldown(userId: string): Promise<CooldownState> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { breachCheckedAt: true },
+  });
+  if (!user?.breachCheckedAt) return { allowed: true, retryAfterSeconds: 0 };
+
+  const elapsedMs = Date.now() - user.breachCheckedAt.getTime();
+  const windowMs = RESCAN_COOLDOWN_MINUTES * 60_000;
+  if (elapsedMs >= windowMs) return { allowed: true, retryAfterSeconds: 0 };
+
+  return { allowed: false, retryAfterSeconds: Math.ceil((windowMs - elapsedMs) / 1000) };
+}
+
 /** 대조를 수행한 적이 있는가. E축 measured 판정의 유일한 근거. */
 export async function hasCheckedBreaches(userId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
