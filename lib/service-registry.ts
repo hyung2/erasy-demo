@@ -109,6 +109,30 @@ function findCatalogByName(
  * 경합에 대비해 upsert를 쓴다. 같은 서비스를 두 요청이 동시에 만들면 slug 유니크 제약에
  * 걸려 한쪽이 실패하는데, 그 실패가 사용자에게는 "가져오기 실패"로 보인다.
  */
+/**
+ * 여러 이름을 한 번에 서비스로 확정하고 `이름 → serviceId` 표를 돌려준다.
+ *
+ * 수집 경로 세 곳(확장 가져오기·메일 스캔·직접 입력)이 모두 이걸 쓴다. 한 곳이라도
+ * 빠지면 그 경로로 들어온 계정만 serviceId가 비어, 백필해 둔 데이터와 갈라진다.
+ *
+ * 서비스로 만들 수 없는 이름(발송 대행 도메인 등)은 표에 담기지 않는다 — 호출부는
+ * `?? null`로 받아 계정만 만들면 된다.
+ */
+export async function ensureServicesForNames(
+  db: Pick<PrismaClient, 'service'>,
+  names: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  // 같은 이름이 여러 번 들어와도 upsert는 한 번만.
+  for (const name of new Set(names)) {
+    const identity = resolveServiceIdentity(name);
+    if (!identity) continue;
+    const { id } = await ensureService(db, identity);
+    out.set(name, id);
+  }
+  return out;
+}
+
 export async function ensureService(
   db: Pick<PrismaClient, 'service'>,
   identity: ResolvedService,

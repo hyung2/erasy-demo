@@ -24,6 +24,7 @@ export const dynamic = 'force-dynamic';
 import { prisma } from '@/lib/prisma';
 import { resolveSessionUser } from '@/lib/session-user';
 import { categoryOf, type ImportProvider } from '@/lib/connection-import';
+import { ensureServicesForNames } from '@/lib/service-registry';
 
 const PROVIDERS: ImportProvider[] = ['google', 'kakao', 'naver'];
 /** 한 번에 받을 수 있는 상한. 화면에서 사용자가 확인한 목록이라 크게 잡되 무한은 아니다. */
@@ -167,10 +168,15 @@ export async function POST(req: Request) {
     }
 
     if (toCreate.length > 0) {
+      // 서비스 신원을 먼저 확정한다. 이걸 빠뜨리면 이 경로로 들어온 계정만 serviceId가
+      // 비어 백필해 둔 데이터와 갈린다.
+      const serviceIds = await ensureServicesForNames(prisma, toCreate);
       await prisma.account.createMany({
         data: toCreate.map((name) => ({
           userId: sessionUser.userId,
           name,
+          rawName: name, // 수집 원문 보존
+          serviceId: serviceIds.get(name) ?? null,
           provider, // 가져온 화면이 곧 가입 방식 — 추측이 아니다
           category: categoryOf(name), // 카탈로그에 없으면 unknown
           source: 'social_link' as const,

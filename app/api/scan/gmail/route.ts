@@ -14,6 +14,7 @@ import { prisma } from '@/lib/prisma';
 import { resolveSessionUser } from '@/lib/session-user';
 import { openScanQuery, OPEN_SCAN_PHRASES } from '@/lib/gmail-catalog';
 import { foldOpenMessages, diffAgainstInventory, type MessageMeta, type ScanHit } from '@/lib/gmail-scan';
+import { ensureServicesForNames } from '@/lib/service-registry';
 
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 // 조회 창은 3년 유지. 5년으로 넓히면 휴면(730일+) 계정 비중이 급증해 점수가 과하게 내려가고
@@ -169,10 +170,17 @@ async function applyToInventory(userId: string, hits: ScanHit[]) {
   }
 
   if (discovered.length > 0) {
+    // 서비스 신원 확정 후 생성. 세 수집 경로가 같은 헬퍼를 쓴다.
+    const serviceIds = await ensureServicesForNames(
+      prisma,
+      discovered.map((h) => h.service),
+    );
     await prisma.account.createMany({
       data: discovered.map((hit) => ({
         userId,
         name: hit.service,
+        rawName: hit.service,
+        serviceId: serviceIds.get(hit.service) ?? null,
         // 메일로는 가입 방식을 알 수 없다 — provider를 추측하지 않고 manual로 둔다.
         provider: 'manual' as const,
         category: hit.category,

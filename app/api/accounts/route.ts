@@ -9,6 +9,7 @@ import { prisma } from '@/lib/prisma';
 import { resolveSessionUser } from '@/lib/session-user';
 import type { ApiEnvelope, AccountDTO, AccountCreateRequest } from '@/lib/api-types';
 import { accounts as seed, deriveRisk, type LinkMethod } from '@/lib/dummy-data';
+import { ensureServicesForNames } from '@/lib/service-registry';
 
 // dummy linkMethod → DB provider enum 매핑(스키마 정본)
 function toProvider(m: LinkMethod): AccountDTO['provider'] {
@@ -123,10 +124,15 @@ export async function POST(request: Request) {
   }
 
   try {
+    // 직접 입력도 같은 정규화를 거친다. 사용자가 'coupang.com'이라 쳐도
+    // 확장이 가져온 '쿠팡'과 같은 서비스로 모이도록.
+    const serviceIds = await ensureServicesForNames(prisma, [name]);
     const r = await prisma.account.create({
       data: {
         userId,
         name,
+        rawName: name,
+        serviceId: serviceIds.get(name) ?? null,
         provider: 'manual',
         category: 'domestic',
         source: 'user_input',
