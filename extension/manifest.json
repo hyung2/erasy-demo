@@ -3,6 +3,19 @@
   "name": "Erasy — 연결목록 가져오기",
   "version": "0.1.0",
   "description": "구글 계정의 연결된 서비스 목록을 이레이지로 가져옵니다. 아이디·비밀번호는 읽지 않습니다.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "이레이지 화면에서 '연결목록 가져오기'를 누르면 동작합니다"
+  },
   "permissions": ["tabs", "scripting"],
   "host_permissions": [
     "https://myaccount.google.com/*",
