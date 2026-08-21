@@ -731,6 +731,14 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
   font-size: 0.9375rem;
   transition: color 0.15s var(--ease), background-color 0.15s var(--ease);
 }
+/* nav-link은 <a>와 <button> 양쪽에 붙는다. 버튼 기본 배경·테두리를 지우지 않으면
+   로그아웃만 회색 상자로 튀어 링크와 다른 물건처럼 보인다. */
+button.nav-link {
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
 .nav-link:hover { color: var(--text); background: var(--surface-2); }
 .nav-link.active { color: #fff; background: var(--surface-3); }
 .nav-link.active::before {
@@ -746,13 +754,22 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 .sidebar .user {
   margin-top: auto;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 12px 4px;
+  /* 이름·설정·로그아웃을 한 줄에 세우면 232px 사이드바에서 글자가 한 자씩 끊겨 내려간다.
+     이름 줄과 동작 줄을 나눈다 — 항목이 하나 더 늘어도 같은 방식으로 버틴다. */
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 14px 0 4px;
+  margin-inline: 12px;
   border-top: 1px solid var(--border-faint);
   color: var(--text-dim);
   font-size: 0.875rem;
 }
+.sidebar .user-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* 긴 이름이 사이드바를 밀어내지 않게. 잘리더라도 줄바꿈보다는 낫다. */
+.sidebar .user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .user-actions { display: flex; gap: 2px; margin-inline: -12px; }
+.sidebar .user-actions .nav-link { flex: 1; text-align: center; font-size: 0.875rem; padding: 8px 6px; }
 .avatar-sm {
   width: 30px; height: 30px;
   border-radius: 50%;
@@ -2177,4 +2194,47 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
   .legal-summary {
     padding: 20px;
   }
+}
+
+/* ── 회원 탈퇴 (설정) ─────────────────────────────────────────────
+   지우는 버튼은 지우는 것처럼 보여야 한다. btn-secondary로 두면 취소 버튼과 구별되지
+   않아서, 되돌릴 수 없는 쪽이 오히려 눈에 덜 띈다. */
+.btn-danger {
+  background: rgba(var(--danger-rgb), 0.12);
+  border-color: rgba(var(--danger-rgb), 0.35);
+  color: var(--danger);
+}
+.btn-danger:hover:not(:disabled) {
+  background: rgba(var(--danger-rgb), 0.2);
+  border-color: rgba(var(--danger-rgb), 0.5);
+}
+.btn-danger:disabled { opacity: 0.42; cursor: not-allowed; }
+
+/* 무엇이 얼마나 지워지는지. 숫자가 오른쪽에 정렬돼야 한눈에 합계가 읽힌다. */
+.delete-summary { margin-bottom: 16px; }
+.delete-summary li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.9375rem;
+}
+.delete-summary li:first-child { border-top: none; }
+.delete-summary li span { color: var(--text-dim); }
+.delete-summary li strong { font-variant-numeric: tabular-nums; }
+
+/* 그대로 옮겨 적어야 하는 값. 본문과 같은 서체면 어디까지가 이메일인지 흐려진다. */
+.confirm-target {
+  margin-bottom: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875rem;
+  color: var(--text);
+  word-break: break-all;
+  user-select: all;
 }

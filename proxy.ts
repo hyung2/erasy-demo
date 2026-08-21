@@ -23,5 +23,6 @@ export const config = {
     '/scanning/:path*',
     '/breach/:path*',
     '/cleanup/:path*',
+    '/settings/:path*',
   ],
 };

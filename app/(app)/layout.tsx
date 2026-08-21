@@ -46,15 +46,26 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           })}
         </nav>
         <div className="user">
-          <span className="avatar-sm">{displayName.slice(0, 1)}</span>
-          {displayName} 님
-          <button
-            type="button"
-            className="nav-link"
-            onClick={() => signOut({ redirectTo: '/' })}
-          >
-            로그아웃
-          </button>
+          <div className="user-id">
+            <span className="avatar-sm">{displayName.slice(0, 1)}</span>
+            <span className="user-name">{displayName} 님</span>
+          </div>
+          <div className="user-actions">
+            <Link
+              href="/settings"
+              className={`nav-link${pathname === '/settings' ? ' active' : ''}`}
+              aria-current={pathname === '/settings' ? 'page' : undefined}
+            >
+              설정
+            </Link>
+            <button
+              type="button"
+              className="nav-link"
+              onClick={() => signOut({ redirectTo: '/' })}
+            >
+              로그아웃
+            </button>
+          </div>
         </div>
       </aside>
       <main className="app-main">{children}</main>
