@@ -62,7 +62,11 @@ function ScanningInner() {
   const router = useRouter();
   const params = useSearchParams();
   const raw = params.get('return');
-  const returnTo = raw && ALLOWED_RETURN.has(raw) ? raw : '/scan';
+  // 수집이 끝나면 **점수부터** 보여준다. 계정 목록으로 착지하면 사용자는 긴 목록 앞에서
+  // 무엇을 해야 할지 스스로 정해야 하는데, 방금 계정을 찾아 준 직후에 할 말은
+  // "당신 상태가 몇 점입니다"이고 그다음이 "그래서 무엇부터 하면 됩니다"다.
+  // 대시보드는 점수와 추천 액션을 그 순서로 갖고 있다.
+  const returnTo = raw && ALLOWED_RETURN.has(raw) ? raw : '/dashboard';
 
   const [index, setIndex] = useState(0);
   /** 각 단계에서 실제로 뭔가 담았는지. 건너뛴 것과 구분해 마지막 화면이 사실대로 말한다. */
@@ -138,7 +142,7 @@ function ScanningInner() {
           >
             {isLast
               ? doneCount > 0
-                ? '찾은 계정 모두 보기'
+                ? '내 안전도 점수 보기'
                 : '건너뛰고 둘러보기'
               : applied[step.id]
                 ? `다음 · ${STEPS[index + 1].label}`
@@ -150,7 +154,7 @@ function ScanningInner() {
               className="linklike"
               onClick={() => router.replace(returnTo)}
             >
-              나중에 하고 목록 보기
+              나중에 하고 점수 보기
             </button>
           )}
         </div>

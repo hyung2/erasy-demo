@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { useDemo } from '@/components/DemoStateClient';
 import { CountUp } from '@/components/CountUp';
 import { ScoreBenchmarkChart } from '@/components/ScoreBenchmarkChart';
-import { HygieneQuickReport } from '@/components/HygieneQuickReport';
 import { demo } from '@/content/copy';
 import type { ScoreDTO, AccountDTO, CleanupQueueItemDTO, AlertDTO } from '@/lib/api-types';
 import type { AxisKey, ActionType } from '@/lib/score-v2';
@@ -57,6 +56,19 @@ const AXIS_META: Record<AxisKey, { label: string }> = {
   threat: { label: '이상 접속 — 지금 수상한 로그인이 있는지' },
 };
 const AXIS_ORDER: AxisKey[] = ['exposure', 'surface', 'hygiene', 'threat'];
+
+/**
+ * 측정하지 못한 축이 그 사실을 설명하는 문장.
+ *
+ * 못 재는 이유가 축마다 다르다. 비밀번호 습관은 **우리가 비밀번호를 저장하지 않기 때문에**
+ * 원칙상 알 수 없고(그 대가로 얻는 것이 안전이다), 이상 접속은 아직 볼 기록이 없는 것이다.
+ * 둘을 "근거 부족" 한 마디로 묶으면 사용자는 우리가 게을러서인지 원래 못 재는 것인지
+ * 구분할 수 없고, 못 재는 것을 두고 자기가 뭘 잘못했나 생각하게 된다.
+ */
+const AXIS_UNMEASURED: Partial<Record<AxisKey, string>> = {
+  hygiene: '비밀번호를 저장하지 않아 이 항목은 재지 않습니다',
+  threat: '아직 확인된 접속 기록이 없어요',
+};
 
 // 회복 액션 표시 라벨 + 이동 경로(과장 금지 문구 — 무효화 표현 없음). href는 내부 경로(불변).
 const ACTION_META: Record<ActionType, { label: string; href: string }> = {
@@ -110,9 +122,6 @@ export default function DashboardPage() {
     };
   }, []);
 
-  // 자가신고를 반영한 뒤 점수·목록을 다시 읽기 위한 신호. 값이 바뀌면 두 조회가 다시 돈다.
-  const [reloadKey, setReloadKey] = useState(0);
-
   useEffect(() => {
     let alive = true;
     fetch('/api/score')
@@ -129,10 +138,7 @@ export default function DashboardPage() {
     return () => {
       alive = false;
     };
-  }, [reloadKey]);
-
-  // 자가신고 빠른 입력이 원본 목록을 쓴다(요약만으로는 계정 id를 알 수 없다).
-  const [accountList, setAccountList] = useState<AccountDTO[]>([]);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -140,10 +146,7 @@ export default function DashboardPage() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((body: { data: AccountDTO[] }) => {
         // 실패해도 시드 상수로 되돌아가지 않는다 — 그 조용한 폴백이 숫자 불일치의 원인이었다.
-        if (alive) {
-          setInv(summarize(body.data ?? []));
-          setAccountList(body.data ?? []);
-        }
+        if (alive) setInv(summarize(body.data ?? []));
       })
       .catch(() => {
         if (alive) setInv(null);
@@ -151,7 +154,7 @@ export default function DashboardPage() {
     return () => {
       alive = false;
     };
-  }, [reloadKey]);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -397,20 +400,18 @@ export default function DashboardPage() {
                     {isWeakest && measured ? '가장 취약한 축 · ' : ''}
                     {measured
                       ? a.topFinding ?? '특이 위험 없음'
-                      : `확인된 계정 ${a.coveredCount}/${a.totalCount} — 근거 부족`}
+                      : /* 못 재는 축은 이유를 말한다. "근거 부족"만 적어 두면 사용자는
+                           우리가 게을러서인지 원래 알 수 없는 것인지 구분할 수 없다.
+                           아래 두 축은 성격이 다르다 — 하나는 원칙상 못 재고,
+                           하나는 아직 볼 것이 없다. */
+                        AXIS_UNMEASURED[key] ??
+                        `확인된 계정 ${a.coveredCount}/${a.totalCount} — 근거 부족`}
                   </p>
                 </div>
               );
             })}
           </div>
         </>
-      )}
-
-      {/* 위생축이 꺼져 있으면 켜는 길을 바로 옆에 둔다.
-          "근거 부족"이라고만 적어 두면 사용자는 무엇을 해야 그 축이 켜지는지 알 수 없고,
-          우리는 비밀번호를 저장하지 않으므로 알려주지 않으면 영영 잴 수 없다. */}
-      {dto && !dto.axes.hygiene.measured && accountList.length > 0 && (
-        <HygieneQuickReport accounts={accountList} onDone={() => setReloadKey((k) => k + 1)} />
       )}
 
       {/* 추천 액션 — 기대 상승폭 기반(최약축 우선). 미준비 시 정적 네비 폴백 */}
