@@ -520,7 +520,6 @@ function expectedGain(
 
 // 액션별 대상 인덱스 산출(활성 계정 한정)
 function targetsFor(rows: ScoreRowV2[], actionType: ActionType): number[] {
-  const P = SCORE_V2_PARAMS;
   const out: number[] = [];
   rows.forEach((r, i) => {
     if (r.removed) return;

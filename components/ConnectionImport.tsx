@@ -173,7 +173,6 @@ export default function ConnectionImport({
 
   /** 연결 목록 창을 새로 띄우고, 돌아오는 시점을 잡아 안내를 올린다. */
   function openProviderPage() {
-    openedAt.current = Date.now();
     setAwaitingReturn(true);
     setResult(null);
     window.open(current.href, '_blank', 'noopener,noreferrer');
@@ -181,6 +180,10 @@ export default function ConnectionImport({
 
   useEffect(() => {
     if (!awaitingReturn) return;
+    // 창을 연 시각은 여기서 남긴다. 렌더 중에 Date.now를 부르면 리렌더마다 값이 달라져
+    // 결과가 불안정해질 수 있다는 것이 React의 규칙이고, 아래 1500ms 임계는 그 사이의
+    // 몇 밀리초 차이에 영향받지 않는다.
+    openedAt.current = Date.now();
     // 다른 창에 다녀온 뒤 우리 탭이 다시 보이면 담기 안내를 강조한다.
     // 클립보드를 몰래 읽지는 않는다 — 읽기는 사용자가 버튼을 누를 때만 일어난다.
     function onVisible() {

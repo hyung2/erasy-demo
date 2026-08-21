@@ -56,8 +56,10 @@ export function ScoreBenchmarkChart({
     const el = ref.current;
     if (!el) return;
     if (typeof IntersectionObserver === 'undefined') {
-      setDrawn(true);
-      return;
+      // 관찰할 방법이 없는 브라우저에서는 다음 프레임에 그린다.
+      // 여기서 곧바로 setState를 하면 effect가 렌더를 연쇄로 일으킨다.
+      const id = requestAnimationFrame(() => setDrawn(true));
+      return () => cancelAnimationFrame(id);
     }
     const io = new IntersectionObserver(
       (entries) => {
