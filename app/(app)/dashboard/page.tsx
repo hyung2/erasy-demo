@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useDemo } from '@/components/DemoStateClient';
 import { CountUp } from '@/components/CountUp';
 import { ScoreBenchmarkChart } from '@/components/ScoreBenchmarkChart';
+import { HygieneQuickReport } from '@/components/HygieneQuickReport';
 import { demo } from '@/content/copy';
 import type { ScoreDTO, AccountDTO, CleanupQueueItemDTO, AlertDTO } from '@/lib/api-types';
 import type { AxisKey, ActionType } from '@/lib/score-v2';
@@ -109,6 +110,9 @@ export default function DashboardPage() {
     };
   }, []);
 
+  // 자가신고를 반영한 뒤 점수·목록을 다시 읽기 위한 신호. 값이 바뀌면 두 조회가 다시 돈다.
+  const [reloadKey, setReloadKey] = useState(0);
+
   useEffect(() => {
     let alive = true;
     fetch('/api/score')
@@ -125,7 +129,10 @@ export default function DashboardPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [reloadKey]);
+
+  // 자가신고 빠른 입력이 원본 목록을 쓴다(요약만으로는 계정 id를 알 수 없다).
+  const [accountList, setAccountList] = useState<AccountDTO[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -133,7 +140,10 @@ export default function DashboardPage() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((body: { data: AccountDTO[] }) => {
         // 실패해도 시드 상수로 되돌아가지 않는다 — 그 조용한 폴백이 숫자 불일치의 원인이었다.
-        if (alive) setInv(summarize(body.data ?? []));
+        if (alive) {
+          setInv(summarize(body.data ?? []));
+          setAccountList(body.data ?? []);
+        }
       })
       .catch(() => {
         if (alive) setInv(null);
@@ -141,7 +151,7 @@ export default function DashboardPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   useEffect(() => {
     let alive = true;
@@ -394,6 +404,13 @@ export default function DashboardPage() {
             })}
           </div>
         </>
+      )}
+
+      {/* 위생축이 꺼져 있으면 켜는 길을 바로 옆에 둔다.
+          "근거 부족"이라고만 적어 두면 사용자는 무엇을 해야 그 축이 켜지는지 알 수 없고,
+          우리는 비밀번호를 저장하지 않으므로 알려주지 않으면 영영 잴 수 없다. */}
+      {dto && !dto.axes.hygiene.measured && accountList.length > 0 && (
+        <HygieneQuickReport accounts={accountList} onDone={() => setReloadKey((k) => k + 1)} />
       )}
 
       {/* 추천 액션 — 기대 상승폭 기반(최약축 우선). 미준비 시 정적 네비 폴백 */}

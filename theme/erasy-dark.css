@@ -1762,6 +1762,65 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 }
 .auth-disclaimer { color: var(--text-mute); font-size: 0.8125rem; text-align: center; line-height: 1.7; }
 
+/* 위생 자가신고 빠른 입력 — 계정명 + 토글 2개. 한 화면에서 여러 건을 넘긴다. */
+.hygiene-grid {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 16px 0;
+}
+
+.hygiene-head,
+.hygiene-row {
+  display: grid;
+  grid-template-columns: 1fr 120px 100px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+.hygiene-head {
+  background: var(--surface);
+  color: var(--text-mute);
+  font-size: 0.75rem;
+}
+
+.hygiene-head span:not(:first-child),
+.hygiene-cell {
+  text-align: center;
+  justify-self: center;
+}
+
+.hygiene-row {
+  border-top: 1px solid var(--border-faint);
+  font-size: 0.875rem;
+}
+
+.hygiene-name {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hygiene-cell {
+  display: flex;
+  justify-content: center;
+  cursor: pointer;
+  padding: 4px 12px;
+}
+
+@media (max-width: 560px) {
+  .hygiene-head,
+  .hygiene-row {
+    grid-template-columns: 1fr 72px 64px;
+    padding: 10px;
+  }
+  .hygiene-head {
+    font-size: 0.6875rem;
+  }
+}
+
 /* 유출 카드 하단 동작 — 안내와 조치 표시가 나란히. */
 .breach-actions {
   display: flex;
