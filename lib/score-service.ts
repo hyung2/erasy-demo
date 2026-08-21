@@ -288,11 +288,22 @@ function computeCleaned(
 export async function getScoreForUser(userId: string): Promise<ScoreServiceResult> {
   try {
     // 유출 대조 수행 여부는 계정 행에 없다. 이 한 건이 E축의 측정/미측정을 가른다.
-    const [rows, user] = await Promise.all([
+    const [rows, user, unlinked] = await Promise.all([
       queryAccounts(userId),
       prisma.user.findUnique({ where: { id: userId }, select: { breachCheckedAt: true } }),
+      // 계정에 이어 붙지 못한 미해결 유출. 이걸 빼고 세면 대조로 사건을 찾아내고도
+      // 점수가 그대로인 일이 생긴다(2026-08-21 Suno 실측).
+      prisma.breach.findMany({
+        where: { userId, accountId: null, resolved: false },
+        select: { exposedFields: true },
+      }),
     ]);
-    const ctx: ScoreContext = { checked: user?.breachCheckedAt != null };
+    const ctx: ScoreContext = {
+      checked: user?.breachCheckedAt != null,
+      unlinkedBreaches: unlinked.map((b) => ({
+        passwordExposed: b.exposedFields.includes('비밀번호'),
+      })),
+    };
 
     // 실계정 0건 → 빈 상태. 예전에는 시드 유저 데이터로 폴백했는데, 그러면 방금 가입한
     // 사람에게 남의 계정 24개가 자기 점수로 표시된다. 아직 아무것도 못 찾은 것은

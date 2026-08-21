@@ -143,5 +143,41 @@ function hibp(over: Partial<HibpBreach> = {}): HibpBreach {
   );
 }
 
+// ── 7. 계정에 이어지지 않은 유출도 센다 ──
+// 2026-08-21 실측: 대조로 Suno 유출 1건을 찾았는데 유출축이 100으로 남았다.
+// Breach.accountId가 null이면 어느 계정 행에도 신호가 붙지 않아 감점이 0이었다.
+{
+  const noRows: ScoreRowV2[] = [];
+  const row = (over: Partial<ScoreRowV2> = {}): ScoreRowV2 =>
+    ({ removed: false, breachedUnresolved: false, breachedPasswordExposed: false, ...over }) as ScoreRowV2;
+
+  const linked = computeExposure([row(), row()], {
+    checked: true,
+    unlinkedBreaches: [{ passwordExposed: false }],
+  });
+  eq(linked.score, 80, '7-a 계정 미연결 유출(PII) 1건도 감점된다');
+
+  const pwd = computeExposure([row()], {
+    checked: true,
+    unlinkedBreaches: [{ passwordExposed: true }],
+  });
+  eq(pwd.score, 65, '7-b 계정 미연결 + 비밀번호 노출 = 최대 계수');
+
+  // 계정이 하나도 없어도 대조 결과가 있으면 잴 것이 있다.
+  const onlyUnlinked = computeExposure(noRows, {
+    checked: true,
+    unlinkedBreaches: [{ passwordExposed: true }],
+  });
+  eq(onlyUnlinked.measured, true, '7-c 계정 0건이라도 유출이 있으면 측정됨');
+  eq(onlyUnlinked.score, 65, '7-d 그 값도 실제 감점을 반영');
+
+  // 대조하지 않았다면 미연결 유출이 있어도 축 자체가 미측정이다(순서 뒤집기 방지).
+  eq(
+    computeExposure([row()], { unlinkedBreaches: [{ passwordExposed: true }] }).measured,
+    false,
+    '7-e 대조 전에는 미연결 유출이 있어도 미측정',
+  );
+}
+
 console.log(`verify-breach-lookup: ${passed} assertions passed`);
 console.log('  E축은 이제 대조를 실제로 수행한 사용자에게만 점수를 낸다.');

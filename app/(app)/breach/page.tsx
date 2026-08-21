@@ -33,6 +33,23 @@ export default function BreachPage() {
     load();
   }, [load]);
 
+  // 조치 표시·되돌리기. 되돌릴 수 없으면 사용자는 누르기를 주저하고,
+  // 그러면 회복 경로가 있으나 마나가 된다(08-10 정리 큐에서 같은 판단).
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  async function markResolved(id: string, resolved: boolean) {
+    setPendingId(id);
+    try {
+      await fetch('/api/breach/resolve', {
+        method: resolved ? 'POST' : 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      load();
+    } finally {
+      setPendingId(null);
+    }
+  }
+
   const active = breaches.filter((b) => !b.resolved);
   const resolved = breaches.filter((b) => b.resolved);
 
@@ -119,9 +136,24 @@ export default function BreachPage() {
             </div>
 
             <p className="advice">{b.advice}</p>
-            <button type="button" className="btn btn-secondary" onClick={() => setGuideOpen(true)}>
-              조치 방법 보기
-            </button>
+            <div className="breach-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setGuideOpen(true)}
+              >
+                조치 방법 보기
+              </button>
+              {/* 조치 완료로 갈 길이 없으면 유출은 감점으로만 남는다. 이 버튼이 회복 경로다. */}
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={pendingId === b.id}
+                onClick={() => markResolved(b.id, true)}
+              >
+                {pendingId === b.id ? '반영하는 중…' : '조치했어요'}
+              </button>
+            </div>
           </div>
         </article>
       ))}
@@ -139,6 +171,14 @@ export default function BreachPage() {
                 </div>
                 <p className="breach-date">유출 시점 {b.breachDate}</p>
                 <p className="advice">{b.advice}</p>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={pendingId === b.id}
+                  onClick={() => markResolved(b.id, false)}
+                >
+                  {pendingId === b.id ? '되돌리는 중…' : '조치 표시 취소'}
+                </button>
               </div>
             </article>
           ))}

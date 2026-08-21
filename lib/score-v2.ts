@@ -177,7 +177,7 @@ function isOverseasActive(r: ScoreRowV2): boolean {
  */
 export function computeExposure(
   rows: ScoreRowV2[],
-  opts: { checked?: boolean } = {},
+  opts: { checked?: boolean; unlinkedBreaches?: { passwordExposed: boolean }[] } = {},
 ): AxisScore {
   const P = SCORE_V2_PARAMS;
   const checked = opts.checked ?? false;
@@ -189,10 +189,18 @@ export function computeExposure(
     survival *= 1 - p;
     breachCount += 1;
   }
+  // 계정과 이어지지 않은 사건도 같은 계수로 센다. 이어졌는지는 우리 매칭의 사정이지
+  // 위험의 크기와 무관하다.
+  for (const b of opts.unlinkedBreaches ?? []) {
+    const p = b.passwordExposed ? P.breachPassword : P.breachPiiOnly;
+    survival *= 1 - p;
+    breachCount += 1;
+  }
   const total = rows.length;
   // coverage: 유출 대조는 이메일 단위로 한 번에 이뤄진다. 수행했으면 보유 계정 전체가
   // 그 결과의 사정권에 들어오므로 1.0, 수행하지 않았으면 0이다.
-  const measured = checked && total > 0;
+  // 계정이 0건이어도 이어지지 않은 유출이 있으면 잴 것이 있다 — 대조 결과가 그 자체로 신호다.
+  const measured = checked && (total > 0 || (opts.unlinkedBreaches?.length ?? 0) > 0);
   return {
     key: 'exposure',
     score: measured ? 100 * survival : null,
@@ -421,7 +429,20 @@ export function deriveGrade(score: number): Grade {
  * 축 산출에 필요한, rows만으로는 알 수 없는 사실.
  * 지금은 유출 대조 수행 여부 하나뿐이지만, 같은 성격의 값이 늘면 여기로 모은다.
  */
-export type ScoreContext = { checked?: boolean };
+export type ScoreContext = {
+  checked?: boolean;
+  /**
+   * 보유 계정과 이어지지 않은 미해결 유출.
+   *
+   * Breach.accountId는 nullable이다(스키마: "없으면 서비스명만"). 그런데 E축은 계정 행을
+   * 거쳐서만 유출을 셌기 때문에, **이어 붙지 못한 사건은 감점이 0이었다.** 실측에서
+   * 유출 1건을 찾고도 유출축이 100으로 남아 드러났다(2026-08-21, Suno).
+   *
+   * 계정 목록에 없다는 것이 안전하다는 뜻은 아니다. 오히려 잊은 계정일 가능성이 크고,
+   * 그건 이 제품이 정확히 겨냥하는 위험이다.
+   */
+  unlinkedBreaches?: { passwordExposed: boolean }[];
+};
 
 // ── 4장 전체: rows → 4축 산출 ──
 export function computeAxes(
@@ -429,7 +450,10 @@ export function computeAxes(
   ctx: ScoreContext = {},
 ): Record<AxisKey, AxisScore> {
   return {
-    exposure: computeExposure(rows, { checked: ctx.checked }),
+    exposure: computeExposure(rows, {
+      checked: ctx.checked,
+      unlinkedBreaches: ctx.unlinkedBreaches,
+    }),
     surface: computeSurface(rows),
     hygiene: computeHygiene(rows),
     threat: computeThreat(rows),

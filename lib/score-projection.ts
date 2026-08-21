@@ -115,8 +115,12 @@ export function projectRecovery(
 
   // before·after 모두 같은 ctx로 계산해야 한다. 한쪽만 대조 사실을 가지면 축 구성이
   // 달라져 "정리하면 오를 폭"에 축이 하나 생겼다 사라지는 몫이 섞인다.
+  //
+  // 예외는 계정에 이어지지 않은 유출이다. after는 resolve_breach를 적용한 세계이므로
+  // 그 사건들도 조치된 상태여야 한다. 여기를 비우지 않으면 사용자가 할 수 있는 조치인데도
+  // 회복 투영에서 영원히 감점으로 남는다 — 회복 경로 없는 감점은 08-05에 한 번 걷어낸 것이다.
   const beforeAxes = computeAxes(before, ctx);
-  const afterAxes = computeAxes(after, ctx);
+  const afterAxes = computeAxes(after, { ...ctx, unlinkedBreaches: [] });
   return {
     beforeComposite: composite(beforeAxes),
     afterComposite: composite(afterAxes),

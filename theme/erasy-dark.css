@@ -1762,6 +1762,14 @@ h2 { font-size: clamp(1.75rem, 2.1vw, 2rem); margin-bottom: 40px; }
 }
 .auth-disclaimer { color: var(--text-mute); font-size: 0.8125rem; text-align: center; line-height: 1.7; }
 
+/* 유출 카드 하단 동작 — 안내와 조치 표시가 나란히. */
+.breach-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 /* 방침·약관 링크. 수직 리듬을 거의 쓰지 않도록 한 줄 고정. */
 .auth-legal {
   display: flex;
