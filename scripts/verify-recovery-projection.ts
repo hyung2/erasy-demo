@@ -44,9 +44,21 @@ async function main() {
     base.recovery.beforeComposite === base.score,
     `before=${base.recovery.beforeComposite} · 종합=${base.score}`,
   );
+  // 계단 최종은 92다. 한때 93이었고 그 1점은 **유출축을 만점으로 세던 값**이었다.
+  //   08-21에 "대조한 적 없으면 만점을 주지 않는다"로 바꾸면서 E축이 미측정으로 빠졌고,
+  //   blend가 측정된 축만으로 재정규화하면서 최종이 1점 내려왔다(실측: 대조 시각을 넣으면
+  //   E축 100 · 최종 93, 빼면 미측정 · 최종 92).
+  //
+  //   숫자만 92로 바꿔 두면 다음에 같은 일이 또 낡은 채로 남는다. **왜 92인지**를 함께 잰다 —
+  //   E축이 다시 측정된 것으로 세어지면 measured가 true가 되어 여기서 걸린다.
   check(
-    'a2 투영 after = 93(계단 최종)',
-    base.recovery.afterComposite === 93,
+    'a2 투영 after의 유출축은 미측정 — 대조 이력이 없다',
+    base.recovery.afterAxes.exposure.measured === false,
+    `measured=${base.recovery.afterAxes.exposure.measured}`,
+  );
+  check(
+    'a3 투영 after = 92(유출축을 뺀 계단 최종)',
+    base.recovery.afterComposite === 92,
     `after=${base.recovery.afterComposite}`,
   );
 
