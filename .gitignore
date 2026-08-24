@@ -48,3 +48,7 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# 웹스토어 제출용 빌드 산출물 (scripts/build-extension.ts)
+extension-dist/
+extension-dist.zip
