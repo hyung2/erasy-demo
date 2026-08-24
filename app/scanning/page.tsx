@@ -137,7 +137,7 @@ function ScanningInner() {
         <div className="onboard-actions">
           <button
             type="button"
-            className={applied[step.id] ? 'btn btn-primary' : 'btn'}
+            className={applied[step.id] ? 'btn btn-primary' : 'btn btn-secondary'}
             onClick={goNext}
           >
             {isLast

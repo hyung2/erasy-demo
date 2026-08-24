@@ -200,6 +200,27 @@ async function main() {
         await new Promise((r) => setTimeout(r, 600));
       }
 
+      // SHOT_PROBE에 선택자를 주면 박스와 여백을 재서 찍는다. 스크린샷만으로는 "빈 공간이
+      // 넓다"까지만 알 수 있고, 어느 규칙이 그 공간을 만들었는지는 재야 나온다.
+      if (process.env.SHOT_PROBE) {
+        const probe = (await browser.send(
+          'Runtime.evaluate',
+          {
+            expression: `JSON.stringify(${JSON.stringify(process.env.SHOT_PROBE.split(',').map((x) => x.trim()))}.map((sel) => {
+              const el = document.querySelector(sel);
+              if (!el) return { sel, missing: true };
+              const r = el.getBoundingClientRect();
+              const c = getComputedStyle(el);
+              return { sel, h: Math.round(r.height), pt: c.paddingTop, pb: c.paddingBottom,
+                       mt: c.marginTop, mb: c.marginBottom, display: c.display, minH: c.minHeight };
+            }), null, 1)`,
+            returnByValue: true,
+          },
+          sessionId,
+        )) as { result?: { value?: string } };
+        console.log(probe.result?.value ?? '(측정 실패)');
+      }
+
       const shot = (await browser.send(
         'Page.captureScreenshot',
         { format: 'png', captureBeyondViewport: true },

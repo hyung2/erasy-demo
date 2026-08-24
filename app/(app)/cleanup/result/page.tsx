@@ -164,8 +164,19 @@ export default function CleanupResultPage() {
         </div>
       </section>
 
-      {/* 축별 상승 */}
-      <h2 className="section-label">무엇이 좋아졌나</h2>
+      {/* 축별 투영 — 아직 일어나지 않은 값이다.
+          afterAxes는 "권고 조치를 전부 적용했을 때"를 계산한 것이라, 위의 실제 상승(24→25)과
+          다른 종류의 숫자다. 그런데 화면은 둘을 같은 화살표 문법으로 나란히 세워 두고 제목까지
+          완료형("무엇이 좋아졌나")이라, 1점 오른 사람에게 +91을 이미 얻은 것처럼 보여 줬다.
+          파일 첫머리 주석은 "정직 가드: '예상 도달' 라벨"이라고 적어 뒀지만 화면엔 없었다. */}
+      <div className="section-label-row">
+        <h2 className="section-label">남은 것까지 정리하면</h2>
+        <span className="badge-sample">예상</span>
+      </div>
+      <p className="section-note">
+        아래는 아직 도달하지 않은 값입니다. 권고한 조치를 모두 마쳤을 때 각 항목이 어디까지
+        오르는지 보여드립니다.
+      </p>
       <div className="axis-delta-list panel">
         {proj.axisKeys
           // 비밀번호 습관은 비밀번호를 저장하지 않는 한 잴 수 없어 카드에서 숨긴다
@@ -225,8 +236,8 @@ export default function CleanupResultPage() {
 
       <p className="result-disclaimer">
         {cleaned
-          ? `정리를 마친 ${cleaned.completedCount}건이 반영된 실제 점수입니다. 정리하지 않았다면 ${cleaned.before}점이었습니다.`
-          : '아직 끝낸 정리가 없어 예상 도달치를 보여드립니다. 각 서비스에서 정리하고 완료를 표시하면 실제 점수로 바뀝니다.'}
+          ? `맨 위 점수는 정리를 마친 ${cleaned.completedCount}건이 반영된 실제 값입니다. 정리하지 않았다면 ${cleaned.before}점이었습니다.`
+          : '아직 끝낸 정리가 없습니다. 각 서비스에서 정리하고 완료를 표시하면 실제 점수로 바뀝니다.'}
       </p>
     </>
   );

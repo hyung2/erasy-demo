@@ -348,7 +348,7 @@ export default function ConnectionImport({
             )}
             <button
               type="button"
-              className="btn"
+              className="btn btn-secondary"
               onClick={() => void collectWithExtension()}
               disabled={collecting}
             >
@@ -425,7 +425,7 @@ export default function ConnectionImport({
               </button>
               <button
                 type="button"
-                className={awaitingReturn ? 'btn btn-primary' : 'btn'}
+                className={awaitingReturn ? 'btn btn-primary' : 'btn btn-secondary'}
                 onClick={pasteFromClipboard}
               >
                 {awaitingReturn ? '복사한 목록 담기' : '복사한 목록 붙여넣기'}
