@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useDemo } from '@/components/DemoStateClient';
 import { CountUp } from '@/components/CountUp';
 import { ScoreBenchmarkChart } from '@/components/ScoreBenchmarkChart';
+import { shouldAlertRisk } from '@/lib/risk-alert';
 import { demo } from '@/content/copy';
 import type {
   ScoreDTO,
@@ -307,12 +308,12 @@ export default function DashboardPage() {
     : [];
   const showRecommendations = showDiagnostics && recommendations.length > 0;
 
-  // 로그인 후 3.7초 위험 알림 모달: 정리 전(위험 있음)에만·흐름당 1회.
-  // 위험이 0건이면 띄우지 않는다 — 계정을 아직 못 찾은 사람에게 "위험 계정 0개가
-  // 발견됐어요"라고 말을 걸던 자리다(2026-08-18 실측).
+  // 로그인 후 3.7초 위험 알림 모달: 정리 전에만·흐름당 1회.
+  //   0건이면 띄우지 않는 것은 08-18에 고쳤다("위험 계정 0개가 발견됐어요"를 말하던 자리).
+  //   그런데 1건에도 뜨는 상태로 남아 있어서, 흐름을 끊을 만큼 많을 때만 띄우도록 좁혔다.
   useEffect(() => {
     if (cleaned) return;
-    if (!inv || inv.highRisk === 0) return;
+    if (!inv || !shouldAlertRisk(inv.highRisk, inv.total)) return;
     if (typeof window === 'undefined') return;
     if (sessionStorage.getItem(RISK_ALERT_KEY) === '1') return;
     const t = setTimeout(() => {
