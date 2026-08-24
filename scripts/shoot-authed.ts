@@ -22,7 +22,13 @@ import { join } from 'node:path';
 const CHROME =
   process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PORT = 9223;
-const VIEWPORT = { width: 1440, height: 960 };
+// 웹스토어 스크린샷은 정확히 1280x800을 요구한다. SHOT_SIZE로 바꾼다.
+const [VW, VH] = (process.env.SHOT_SIZE ?? '1440x960').split('x').map(Number);
+const VIEWPORT = { width: VW, height: VH };
+/** 전체 페이지가 아니라 화면에 보이는 만큼만. 규격 스크린샷은 크기가 정확해야 한다. */
+const VIEWPORT_ONLY = process.env.SHOT_VIEWPORT_ONLY === '1';
+/** 확장을 올린 뒤 페이지를 연다 — 원터치 경로가 보이는 화면을 찍으려면 필요하다. */
+const WITH_EXTENSION = process.env.SHOT_EXTENSION === '1';
 
 // ATTACH_PORT를 주면 이미 떠 있는 브라우저에 붙는다(watch-csp.ts가 띄운 창 등).
 // 사람이 구글로 로그인한 세션을 그대로 쓰기 위한 통로다 — 헤드리스로는 구글 로그인을
@@ -164,6 +170,7 @@ async function main() {
           `--remote-debugging-port=${PORT}`,
           `--user-data-dir=${profile}`,
           `--window-size=${VIEWPORT.width},${VIEWPORT.height}`,
+          ...(WITH_EXTENSION ? ['--enable-unsafe-extension-debugging'] : []),
           '--no-first-run',
           '--disable-gpu',
           'about:blank',
@@ -185,7 +192,21 @@ async function main() {
     })) as { sessionId: string };
 
     console.log(`  target ${targetId} / session ${sessionId}`);
+    if (WITH_EXTENSION) {
+      const r = (await browser.send('Extensions.loadUnpacked', {
+        path: join(process.cwd(), 'extension'),
+      })) as { id?: string; __error?: string };
+      console.log(r.id ? `  확장 로드: ${r.id}` : `  확장 로드 실패: ${r.__error ?? '알 수 없음'}`);
+    }
+
     await browser.send('Page.enable', {}, sessionId);
+    // 창 크기와 별개로 렌더 뷰포트를 못 박는다. headless에서 window-size만으로는
+    // 실제 레이아웃 폭이 어긋나는 경우가 있고, 규격 스크린샷은 그 차이가 곧 반려다.
+    await browser.send(
+      'Emulation.setDeviceMetricsOverride',
+      { width: VIEWPORT.width, height: VIEWPORT.height, deviceScaleFactor: 1, mobile: false },
+      sessionId,
+    );
     await browser.send('Network.enable', {}, sessionId);
 
     // CSP 위반을 브라우저에서 직접 받는다.
@@ -296,7 +317,7 @@ async function main() {
 
       const shot = (await browser.send(
         'Page.captureScreenshot',
-        { format: 'png', captureBeyondViewport: true },
+        { format: 'png', captureBeyondViewport: !VIEWPORT_ONLY },
         sessionId,
       )) as { data?: string; __error?: string };
       if (!shot.data) throw new Error(`촬영 실패 ${path}: ${shot.__error ?? '알 수 없음'}`);
