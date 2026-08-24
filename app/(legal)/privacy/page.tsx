@@ -12,7 +12,9 @@ export const metadata: Metadata = {
     '이레이지가 수집하는 항목, 수집하지 않는 항목, 외부로 나가는 데이터와 그 이유를 정리한 문서입니다.',
 };
 
-const LAST_UPDATED = '2026년 8월 21일';
+// 방침 본문을 고칠 때 함께 올린다. 개정일이 실제와 어긋나면 이용자는 언제 무엇이 바뀌었는지
+// 알 수 없고, 그 자체가 방침의 신뢰를 깎는다.
+const LAST_UPDATED = '2026년 8월 24일';
 /** 방침 문의처. 웹스토어 등록 시 개발자 연락처와 같은 값을 쓴다. */
 const CONTACT_EMAIL = 'jh_park@jiran.com';
 
@@ -199,7 +201,27 @@ export default function PrivacyPage() {
       </section>
 
       <section className="legal-section">
-        <h2>5. 보관과 파기</h2>
+        <h2>5. 통계 목적 이용</h2>
+        <p>
+          어떤 서비스를 몇 명이 쓰는지 <strong>서비스 단위로</strong> 집계합니다. 유출 사건이
+          확인됐을 때 같은 서비스를 쓰는 분들께 알리고, 어떤 서비스를 먼저 지원할지 정하는 데
+          씁니다.
+        </p>
+        <ul className="legal-list">
+          <li>
+            <strong>이용자가 5명 미만인 서비스는 집계에서 제외합니다.</strong> 사람이 적은
+            서비스는 숫자 자체가 특정 개인을 가리키기 때문입니다.
+          </li>
+          <li>
+            집계 결과에는 누가 어디에 가입했는지가 들어가지 않습니다. 이용자를 지목하는 형태로
+            저장하거나 가공하지 않습니다.
+          </li>
+          <li>집계에 쓰는 것은 서비스 이름과 이용자 수뿐이며, 외부에 제공하지 않습니다.</li>
+        </ul>
+      </section>
+
+      <section className="legal-section">
+        <h2>6. 보관과 파기</h2>
         <ul className="legal-list">
           <li>수집한 정보는 이용자가 서비스를 이용하는 동안 보관합니다.</li>
           <li>
@@ -221,7 +243,7 @@ export default function PrivacyPage() {
       </section>
 
       <section className="legal-section">
-        <h2>6. 이용자의 권리</h2>
+        <h2>7. 이용자의 권리</h2>
         <p>
           이용자는 자신의 정보에 대해 열람, 정정, 삭제, 처리 정지를 요청할 수 있습니다. 계정
           목록은 화면에서 직접 수정하거나 지울 수 있고, 전체 삭제는 설정 화면의 회원 탈퇴로
@@ -230,7 +252,7 @@ export default function PrivacyPage() {
       </section>
 
       <section className="legal-section">
-        <h2>7. 서비스의 현재 단계</h2>
+        <h2>8. 서비스의 현재 단계</h2>
         <p>
           이레이지는 시연을 위해 만들어진 초기 단계 서비스입니다. 안전도 점수는 확보한 신호로
           계산한 <strong>진단 참고값</strong>이며, 재지 못한 항목은 점수를 올려 주는 대신
@@ -239,7 +261,7 @@ export default function PrivacyPage() {
       </section>
 
       <section className="legal-section">
-        <h2>8. 문의</h2>
+        <h2>9. 문의</h2>
         <p>
           개인정보 처리에 관한 문의와 열람·정정·삭제 요청은 아래로 연락해 주십시오.
         </p>
