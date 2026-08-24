@@ -17,6 +17,20 @@ type Props = {
   height?: number;
 };
 
+/**
+ * 연달아 같은 x축 라벨은 그룹의 **마지막 지점에만** 남긴다.
+ *
+ * 이 차트의 x는 날짜가 아니라 측정 회차다("측정 시점별 · 최근 6회"). 하루에 여러 번 재면
+ * 같은 날짜가 그 횟수만큼 찍히고, 실계정에서 `08-20`이 네 번 연속 나왔다(2026-08-24 실측).
+ * 데이터는 맞지만 축이 같은 말을 반복하면 읽는 사람은 고장으로 읽는다.
+ *
+ * 그룹의 끝에 두는 이유: 그 지점이 그 날의 마지막 측정이고, 라벨이 가리키는 값과 날짜가
+ * 어긋나지 않는다. 앞에 두면 라벨 오른쪽의 점들이 다음 날처럼 보인다.
+ */
+export function collapseRepeatedLabels(labels: string[]): string[] {
+  return labels.map((lb, i) => (i === labels.length - 1 || labels[i + 1] !== lb ? lb : ''));
+}
+
 export function ScoreBenchmarkChart({
   labels,
   mine,
@@ -187,8 +201,10 @@ export function ScoreBenchmarkChart({
         })}
       </g>
 
-      {/* x축 라벨(측정 시점) — 양 끝은 안쪽 정렬. 가운데 정렬만 쓰면 날짜처럼 긴 라벨이 잘린다. */}
-      {labels.map((lb, i) => {
+      {/* x축 라벨(측정 시점) — 양 끝은 안쪽 정렬. 가운데 정렬만 쓰면 날짜처럼 긴 라벨이 잘린다.
+          같은 날짜가 연달아 오면 그룹의 마지막에만 남긴다(collapseRepeatedLabels). */}
+      {collapseRepeatedLabels(labels).map((lb, i) => {
+        if (!lb) return null;
         const x = padX + i * stepX;
         const anchor = i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle';
         const dx = i === 0 ? -2 : i === labels.length - 1 ? 2 : 0;

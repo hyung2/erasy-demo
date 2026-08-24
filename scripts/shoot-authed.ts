@@ -230,6 +230,30 @@ async function main() {
       // 느린 화면에서는 SHOT_WAIT로 더 늘린다.
       await new Promise((r) => setTimeout(r, Number(process.env.SHOT_WAIT ?? 6000)));
 
+      // 한 번 아래까지 훑고 돌아온다.
+      //
+      // 진입 애니메이션(IntersectionObserver)으로 그려지는 요소는 뷰포트에 들어온 적이
+      // 없으면 영원히 빈 상태다. 전체 페이지를 한 장으로 찍으면 스크롤이 일어나지 않아
+      // 추이 차트가 늘 백지로 남았다(2026-08-21부터 계속). 찍기 전에 밟아 준다.
+      await browser.send(
+        'Runtime.evaluate',
+        {
+          expression: `(async () => {
+            const h = document.body.scrollHeight;
+            for (let y = 0; y <= h; y += Math.max(200, window.innerHeight * 0.8)) {
+              window.scrollTo(0, y);
+              await new Promise((r) => setTimeout(r, 120));
+            }
+            window.scrollTo(0, 0);
+            await new Promise((r) => setTimeout(r, 400));
+          })()`,
+          awaitPromise: true,
+        },
+        sessionId,
+      );
+      // 그려지는 연출이 끝날 시간을 준다(bench-draw 1.1s).
+      await new Promise((r) => setTimeout(r, 1400));
+
       if (clickSelector && ATTACH_PORT) {
         throw new Error('붙기 모드에서는 클릭하지 않습니다.');
       }
