@@ -66,6 +66,8 @@ let nextId = 1;
 type Cdp = {
   send: (method: string, params?: unknown, sessionId?: string) => Promise<Record<string, unknown>>;
   once: (method: string) => Promise<void>;
+  /** 이벤트를 계속 받는다. once는 한 번 기다리고 끝나서 누적 관측에 못 쓴다. */
+  on: (method: string, handler: (params: Record<string, unknown>) => void) => void;
   close: () => void;
 };
 
@@ -78,10 +80,12 @@ async function connect(url: string): Promise<Cdp> {
 
   const pending = new Map<number, (v: Record<string, unknown>) => void>();
   const waiters = new Map<string, (() => void)[]>();
+  const listeners = new Map<string, ((p: Record<string, unknown>) => void)[]>();
   ws.addEventListener('message', (ev) => {
     const msg = JSON.parse(String(ev.data)) as {
       id?: number;
       method?: string;
+      params?: Record<string, unknown>;
       result?: Record<string, unknown>;
       error?: { message: string };
     };
@@ -91,6 +95,7 @@ async function connect(url: string): Promise<Cdp> {
     } else if (msg.method) {
       for (const fn of waiters.get(msg.method) ?? []) fn();
       waiters.delete(msg.method);
+      for (const fn of listeners.get(msg.method) ?? []) fn(msg.params ?? {});
     }
   });
 
@@ -106,6 +111,9 @@ async function connect(url: string): Promise<Cdp> {
       return new Promise((resolve) => {
         waiters.set(method, [...(waiters.get(method) ?? []), resolve]);
       });
+    },
+    on(method, handler) {
+      listeners.set(method, [...(listeners.get(method) ?? []), handler]);
     },
     close: () => ws.close(),
   };
@@ -162,6 +170,19 @@ async function main() {
     console.log(`  target ${targetId} / session ${sessionId}`);
     await browser.send('Page.enable', {}, sessionId);
     await browser.send('Network.enable', {}, sessionId);
+
+    // CSP 위반을 브라우저에서 직접 받는다.
+    //
+    // 서버의 report-uri 로그로 확인하려면 스트림을 먼저 켜고 그 다음 화면을 밟아야 하는데,
+    // 그 순서가 어긋나면 "위반 0건"과 "관측을 놓쳤다"가 같은 빈 결과로 보인다. 브라우저가
+    // 띄우는 경고를 직접 받으면 그 구분이 필요 없다. Report-Only 위반도 여기 찍힌다.
+    const cspViolations: string[] = [];
+    await browser.send('Log.enable', {}, sessionId);
+    browser.on('Log.entryAdded', (p) => {
+      const entry = p.entry as { text?: string; source?: string } | undefined;
+      const text = entry?.text ?? '';
+      if (/Content Security Policy/i.test(text)) cspViolations.push(text.replace(/\s+/g, ' ').slice(0, 200));
+    });
     // 세션 쿠키를 심는다. httpOnly라 문서 스크립트로는 못 넣는다 — CDP를 쓰는 이유가 이것이다.
     await browser.send(
       'Network.setCookie',
@@ -231,6 +252,15 @@ async function main() {
       const file = join(outDir, `${spec.replace(/\W+/g, '-').replace(/^-|-$/g, '') || 'root'}.png`);
       writeFileSync(file, Buffer.from(shot.data, 'base64'));
       console.log(`  ${spec} → ${file}`);
+    }
+
+    if (cspViolations.length === 0) {
+      console.log('CSP 위반 0건 — 밟은 경로 기준');
+    } else {
+      // 중복을 접어 둔다. 같은 위반이 화면마다 반복되면 개수만 커지고 종류가 안 보인다.
+      const uniq = [...new Set(cspViolations)];
+      console.log(`CSP 위반 ${cspViolations.length}건 (종류 ${uniq.length})`);
+      for (const v of uniq) console.log(`  - ${v}`);
     }
 
     browser.close();

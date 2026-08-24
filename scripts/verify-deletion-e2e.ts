@@ -9,6 +9,9 @@
 // 그건 lib를 직접 부르는 검증으로는 절대 잡히지 않는다.
 //
 // 안전: 이 스크립트가 가입시킨 계정만 쓰고, 마지막에 그 계정을 지우는 것으로 끝난다.
+// import가 없으면 TS가 모듈이 아닌 스크립트로 보고 최상위 이름이 전역에 놓인다.
+export {};
+
 const BASE = process.argv[2] ?? 'http://localhost:3022';
 const EMAIL = `e2e-deletion-${Date.now()}@example.invalid`;
 const PASSWORD = 'verify-deletion-pw-2026';
