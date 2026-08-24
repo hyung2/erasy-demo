@@ -24,9 +24,21 @@ const CHROME =
 const PORT = 9223;
 const VIEWPORT = { width: 1440, height: 960 };
 
-const [baseUrl, email, password, ...paths] = process.argv.slice(2);
-if (!baseUrl || !email || !password || paths.length === 0) {
+// ATTACH_PORT를 주면 이미 떠 있는 브라우저에 붙는다(watch-csp.ts가 띄운 창 등).
+// 사람이 구글로 로그인한 세션을 그대로 쓰기 위한 통로다 — 헤드리스로는 구글 로그인을
+// 통과할 수 없어서, 실계정 화면은 이 경로로만 볼 수 있다.
+//
+// 붙기 모드에서는 **클릭하지 않는다.** 사람의 실계정이 로그인된 브라우저이므로
+// 여기서 하는 일은 새 탭을 열어 찍고 닫는 것뿐이다.
+const ATTACH_PORT = process.env.ATTACH_PORT ? Number(process.env.ATTACH_PORT) : null;
+
+const [baseUrl, ...rest] = process.argv.slice(2);
+const [email, password] = ATTACH_PORT ? [null, null] : rest;
+const paths = ATTACH_PORT ? rest : rest.slice(2);
+
+if (!baseUrl || paths.length === 0 || (!ATTACH_PORT && (!email || !password))) {
   console.error('사용법: shoot-authed.ts <baseUrl> <email> <password> <경로...>');
+  console.error('        ATTACH_PORT=9224 shoot-authed.ts <baseUrl> <경로...>');
   process.exit(1);
 }
 const outDir = process.env.SHOT_DIR ?? join(tmpdir(), 'erasy-shots');
@@ -41,6 +53,7 @@ function absorb(res: Response): void {
   }
 }
 async function login(): Promise<{ name: string; value: string }> {
+  if (!email || !password) throw new Error('로그인 정보가 없습니다.');
   const csrfRes = await fetch(`${baseUrl}/api/auth/csrf`);
   absorb(csrfRes);
   const { csrfToken } = (await csrfRes.json()) as { csrfToken: string };
@@ -121,9 +134,10 @@ async function connect(url: string): Promise<Cdp> {
 
 /** Chrome이 디버깅 포트를 열 때까지. 고정 sleep은 느린 날 조용히 실패한다. */
 async function waitForChrome(): Promise<string> {
+  const port = ATTACH_PORT ?? PORT;
   for (let i = 0; i < 60; i += 1) {
     try {
-      const res = await fetch(`http://127.0.0.1:${PORT}/json/version`);
+      const res = await fetch(`http://127.0.0.1:${port}/json/version`);
       const v = (await res.json()) as { webSocketDebuggerUrl: string };
       if (v.webSocketDebuggerUrl) return v.webSocketDebuggerUrl;
     } catch {
@@ -135,24 +149,27 @@ async function waitForChrome(): Promise<string> {
 }
 
 async function main() {
-  const cookie = await login();
-  console.log(`로그인 성공: ${email}`);
+  const cookie = ATTACH_PORT ? null : await login();
+  if (cookie) console.log(`로그인 성공: ${email}`);
+  else console.log(`기존 브라우저에 붙습니다 (포트 ${ATTACH_PORT}) — 클릭하지 않습니다.`);
   mkdirSync(outDir, { recursive: true });
 
   const profile = join(tmpdir(), `erasy-cdp-${Date.now()}`);
-  const chrome: ChildProcess = spawn(
-    CHROME,
-    [
-      '--headless=new',
-      `--remote-debugging-port=${PORT}`,
-      `--user-data-dir=${profile}`,
-      `--window-size=${VIEWPORT.width},${VIEWPORT.height}`,
-      '--no-first-run',
-      '--disable-gpu',
-      'about:blank',
-    ],
-    { stdio: 'ignore' },
-  );
+  const chrome: ChildProcess | null = ATTACH_PORT
+    ? null
+    : spawn(
+        CHROME,
+        [
+          '--headless=new',
+          `--remote-debugging-port=${PORT}`,
+          `--user-data-dir=${profile}`,
+          `--window-size=${VIEWPORT.width},${VIEWPORT.height}`,
+          '--no-first-run',
+          '--disable-gpu',
+          'about:blank',
+        ],
+        { stdio: 'ignore' },
+      );
 
   try {
     const wsUrl = await waitForChrome();
@@ -184,18 +201,22 @@ async function main() {
       if (/Content Security Policy/i.test(text)) cspViolations.push(text.replace(/\s+/g, ' ').slice(0, 200));
     });
     // 세션 쿠키를 심는다. httpOnly라 문서 스크립트로는 못 넣는다 — CDP를 쓰는 이유가 이것이다.
-    await browser.send(
-      'Network.setCookie',
-      {
-        name: cookie.name,
-        value: cookie.value,
-        url: baseUrl,
-        httpOnly: true,
-        sameSite: 'Lax',
-        path: '/',
-      },
-      sessionId,
-    );
+    // 붙기 모드에서는 심지 않는다 — 그 브라우저에 이미 사람의 세션이 있고, 우리가 그 값을
+    // 알 필요도 없다.
+    if (cookie) {
+      await browser.send(
+        'Network.setCookie',
+        {
+          name: cookie.name,
+          value: cookie.value,
+          url: baseUrl,
+          httpOnly: true,
+          sameSite: 'Lax',
+          path: '/',
+        },
+        sessionId,
+      );
+    }
 
     for (const spec of paths) {
       const [path, clickSelector] = spec.split('::');
@@ -203,8 +224,15 @@ async function main() {
       await browser.send('Page.navigate', { url: `${baseUrl}${path}` }, sessionId);
       await Promise.race([loaded, new Promise((r) => setTimeout(r, 15000))]);
       // 이 화면들은 붙자마자 fetch로 숫자를 채운다. 로드 직후에 찍으면 늘 빈 상태만 남는다.
-      await new Promise((r) => setTimeout(r, 2500));
+      //
+      // 기본 2.5초는 264계정 실계정에서 모자랐다 — /api/score가 2.5초 걸려 경계에 걸렸고,
+      // "불러오는 중"이 그대로 찍혀 데이터가 없는 화면처럼 보였다(2026-08-24). 넉넉히 두고,
+      // 느린 화면에서는 SHOT_WAIT로 더 늘린다.
+      await new Promise((r) => setTimeout(r, Number(process.env.SHOT_WAIT ?? 6000)));
 
+      if (clickSelector && ATTACH_PORT) {
+        throw new Error('붙기 모드에서는 클릭하지 않습니다.');
+      }
       if (clickSelector) {
         const clicked = (await browser.send(
           'Runtime.evaluate',
@@ -263,9 +291,11 @@ async function main() {
       for (const v of uniq) console.log(`  - ${v}`);
     }
 
+    // 붙기 모드에서는 우리가 연 탭만 닫는다. 사람이 보고 있는 탭은 건드리지 않는다.
+    if (ATTACH_PORT) await browser.send('Target.closeTarget', { targetId });
     browser.close();
   } finally {
-    chrome.kill();
+    chrome?.kill();
   }
 }
 
