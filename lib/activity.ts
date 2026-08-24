@@ -66,10 +66,13 @@ export async function buildActivityFeed(
       orderBy: { createdAt: 'desc' },
       take: 100, // 배치로 접으므로 넉넉히 읽는다 — 20건 일괄 담기가 한 줄이 된다
     }),
+    // take를 걸지 않는다.
+    //   이 결과의 length가 그대로 화면 문구의 숫자가 되므로, 잘라 읽으면 요약 카드는 6이라
+    //   말하고 활동 피드는 5라 말하는 화면이 된다. 미해결 유출은 사용자당 많아야 수십 건이라
+    //   전부 읽어도 부담이 없다. 표시를 줄이고 싶으면 조회가 아니라 표시에서 줄인다.
     db.breach.findMany({
       where: { userId, resolved: false },
       select: { id: true, service: true },
-      take: 5,
     }),
   ]);
 
@@ -176,7 +179,11 @@ export async function buildActivityFeed(
     feed.unshift({
       id: `breach:${breaches.map((b) => b.id).join(',')}`,
       type: 'breach',
-      message: `유출 이력이 있는 계정 ${breaches.length}개가 아직 정리되지 않았어요`,
+      // "계정 N개"가 아니라 "유출 N건"이다.
+      //   breaches는 Breach 레코드(사건)이고, 그중 일부는 어느 계정 것인지 특정되지 않는다
+      //   (Breach.accountId = null). 그걸 계정 수로 부르면 계정 목록에서 셀 수 없는 숫자가
+      //   활동 피드에만 나타난다. 점수 축·요약 카드와 같은 말("미해결 유출")을 쓴다.
+      message: `미해결 유출 ${breaches.length}건이 아직 정리되지 않았어요`,
       when: '확인 필요',
       tone: 'error',
     });

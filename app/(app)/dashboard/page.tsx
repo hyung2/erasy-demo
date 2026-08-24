@@ -7,7 +7,13 @@ import { useDemo } from '@/components/DemoStateClient';
 import { CountUp } from '@/components/CountUp';
 import { ScoreBenchmarkChart } from '@/components/ScoreBenchmarkChart';
 import { demo } from '@/content/copy';
-import type { ScoreDTO, AccountDTO, CleanupQueueItemDTO, AlertDTO } from '@/lib/api-types';
+import type {
+  ScoreDTO,
+  AccountDTO,
+  CleanupQueueItemDTO,
+  AlertDTO,
+  GuardDTO,
+} from '@/lib/api-types';
 import type { AxisKey, ActionType } from '@/lib/score-v2';
 // peerMonthlyAvg만 남는다 — 또래 평균은 관측치가 아니라 예시 기준선이고, 화면이 "예시" 배지로
 // 그 사실을 말한다. 활동 피드는 실데이터(/api/guard)로 옮겼다.
@@ -21,7 +27,6 @@ const DORMANT_DAYS = 365; // "미사용 12개월+" 기준
 
 type Inventory = {
   total: number;
-  breached: number;
   overseas: number;
   social: number;
   unused: number;
@@ -31,7 +36,11 @@ type Inventory = {
 function summarize(list: AccountDTO[]): Inventory {
   return {
     total: list.length,
-    breached: list.filter((a) => a.breached).length,
+    // breached를 여기서 세지 않는다.
+    //   Account.breached는 Breach 관계에서 파생되는 **캐시**이고, 유출 사건이 어느 계정
+    //   것인지 특정하지 못하면(Breach.accountId = null) 켜지지 않는다. 그 상태에서 이 값을
+    //   "유출 발견"으로 내보내면 축은 "미해결 유출 1건", 요약은 "미해결 없음"이라고 말하는
+    //   화면이 된다(2026-08-24 실계정 실측). 유출 건수는 Breach 원본으로만 센다.
     overseas: list.filter((a) => a.category === 'overseas').length,
     social: list.filter((a) => a.category === 'social').length,
     unused: list.filter((a) => a.lastUsedDays >= DORMANT_DAYS).length,
@@ -120,15 +129,28 @@ export default function DashboardPage() {
   // 활동 피드 — 이 사용자에게 실제로 일어난 일만. 예전에는 dummy를 직접 import해서
   // 방금 가입한 사람도 "Quora 유출 정황 발견 · 2시간 전"을 자기 이력으로 봤다.
   const [feed, setFeed] = useState<AlertDTO[] | null>(null);
+  // 유출 현황 — 점수 엔진과 **같은 근거**(Breach 원본, resolved=false)를 화면도 쓴다.
+  // checkedAt이 null이면 "유출 없음"이 아니라 "아직 대조하지 않음"이다. 둘을 같은 0으로
+  // 말하면 아무것도 대조하지 않은 사람에게 안심을 파는 셈이 된다.
+  const [breachState, setBreachState] = useState<{
+    unresolved: number;
+    checkedAt: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let alive = true;
     fetch('/api/guard')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((body: { data: { alerts: AlertDTO[] } }) => {
-        if (alive) setFeed(body.data.alerts ?? []);
+      .then((body: { data: GuardDTO }) => {
+        if (!alive) return;
+        setFeed(body.data.alerts ?? []);
+        setBreachState({
+          unresolved: (body.data.breaches ?? []).filter((b) => !b.resolved).length,
+          checkedAt: body.data.breachCheckedAt ?? null,
+        });
       })
       .catch(() => {
+        // 못 읽었으면 0으로 내려앉지 않는다 — 그 0이 "유출 없음"으로 읽힌다.
         if (alive) setFeed([]);
       });
     return () => {
@@ -483,10 +505,22 @@ export default function DashboardPage() {
         <div className="stat">
           <div className="lbl">유출 발견</div>
           <div className="num danger">
-            {n(inv?.breached) === null ? '—' : <CountUp value={inv!.breached} />}
+            {breachState === null || breachState.checkedAt === null ? (
+              '—'
+            ) : (
+              <CountUp value={breachState.unresolved} />
+            )}
           </div>
-          <div className={inv && inv.breached > 0 ? 'delta is-danger' : 'delta'}>
-            {inv === null ? '불러오는 중' : inv.breached > 0 ? '미해결 유출' : '미해결 없음'}
+          <div
+            className={breachState && breachState.unresolved > 0 ? 'delta is-danger' : 'delta'}
+          >
+            {breachState === null
+              ? '불러오는 중'
+              : breachState.checkedAt === null
+                ? '아직 대조하지 않았어요'
+                : breachState.unresolved > 0
+                  ? '미해결 유출'
+                  : '미해결 없음'}
           </div>
         </div>
         {/* 정리 대기 = **실제 정리 큐에 담긴 건수**. 이전에는 "6개월 이상 안 쓴 소셜 연결"을
