@@ -54,6 +54,7 @@ const TIERS: Record<string, Tier> = {
   'verify-risk-alert': 'static',
   'verify-service-registry': 'static',
   'verify-service-wiring': 'static',
+  'verify-surface-measured': 'static',
 
   'verify-account-deletion': 'db',
   'verify-acknowledge': 'db',
