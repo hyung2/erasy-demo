@@ -226,7 +226,11 @@ async function main(): Promise<void> {
     if (names.length === 0) continue;
     console.log(`\n── ${tier} (${names.length}종) ──`);
     for (const name of names) {
-      const extra = tier === 'prod' && base ? [base] : [];
+      // server 계층 일부는 주소를 인자로 받고(verify-deletion-e2e), 일부는 BASE_URL 환경변수로
+      // 받는다. 인자를 안 넘기면 기본 포트로 붙었다가 "fetch failed"로 죽는데, 그 문구는
+      // 서버가 없다는 뜻으로 읽혀 원인을 엉뚱한 곳에서 찾게 된다.
+      const target = tier === 'prod' ? base : tier === 'server' ? (base ?? process.env.BASE_URL) : undefined;
+      const extra = target ? [target] : [];
       const r = await runOne(name, tier, extra);
       results.push(r);
       console.log(

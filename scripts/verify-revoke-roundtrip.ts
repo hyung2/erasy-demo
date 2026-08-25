@@ -320,6 +320,19 @@ async function main() {
       resolved: false,
     },
   });
+  // 유출 행을 심었으면 대조 시각도 함께 찍는다 — **전제를 성립시키는 것도 픽스처의 일이다.**
+  //
+  //   유출 축은 대조를 실제로 수행했을 때만 측정된다(2026-08-21). 대조 시각 없이 Breach 행만
+  //   있는 상태는 프로덕션에서 만들어질 수 없다 — 유출 행을 만드는 경로(대조 동기화·데모
+  //   프로비저닝)가 모두 시각을 함께 찍기 때문이다.
+  //
+  //   그 상태로 두면 유출 축이 미측정으로 빠져 유출 계정을 지워도 점수가 안 움직이고, 검사는
+  //   "정리가 점수에 반영되지 않는다"고 실패한다. 제품이 아니라 픽스처가 틀린 것인데, 그때
+  //   코드를 고치러 가면 없는 결함을 쫓게 된다.
+  await prisma.user.update({
+    where: { id: userA.id },
+    data: { breachCheckedAt: new Date() },
+  });
   const beforeManual = await scoreOf(jarA);
   await fetch(`${BASE}/api/cleanup/requests`, {
     method: 'POST',
