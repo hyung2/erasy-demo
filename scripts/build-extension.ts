@@ -10,7 +10,7 @@
 //
 // 개발용 파일을 직접 고치지 않고 사본을 만든다. 고쳤다가 되돌리는 것을 잊으면 그날부터
 // 로컬에서 확장이 조용히 죽는다.
-import { cpSync, readFileSync, writeFileSync, rmSync, existsSync, mkdirSync } from 'node:fs';
+import { cpSync, readFileSync, writeFileSync, rmSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
@@ -60,12 +60,31 @@ function main() {
   console.log(`권한: ${(manifest.permissions ?? []).join(', ') || '없음'}`);
   console.log(`호스트 권한 ${(manifest.host_permissions ?? []).length}건`);
 
-  // zip은 PowerShell로. Node 기본 모듈에는 압축이 없고, 이것 때문에 의존성을 늘리지 않는다.
+  // zip은 Windows 기본 bsdtar로. Node 기본 모듈에는 압축이 없고, 이것 때문에 의존성을
+  // 늘리지 않는다.
+  //
+  // **PowerShell Compress-Archive를 쓰지 않는다.** 중첩 폴더 항목을 `icons\icon128.png`처럼
+  // **역슬래시**로 적는다. ZIP 규격은 슬래시를 요구하고, macOS·리눅스에서 풀면 폴더가 아니라
+  // 그 이름을 통째로 가진 파일 하나가 생긴다. manifest가 가리키는 icons/icon128.png가
+  // 없으니 Chrome이 확장을 아예 못 올린다 — 심사위원 절반이 그 환경일 수 있다.
+  // Windows에서 풀면 멀쩡해 보여서 만든 사람은 끝까지 모른다(2026-08-25 발견).
+  //
+  // 항목을 하나씩 넘기는 것은 `.` 로 넘길 때 붙는 `./` 접두사를 없애기 위해서다.
+  const entries = readdirSync(OUT);
   execFileSync(
-    'powershell',
-    ['-NoProfile', '-Command', `Compress-Archive -Path '${OUT}/*' -DestinationPath '${ZIP}' -Force`],
+    'C:/Windows/System32/tar.exe',
+    ['-a', '-c', '-f', ZIP, '-C', OUT, ...entries],
     { stdio: 'inherit' },
   );
+
+  // 만든 zip을 되읽어 경로 구분자를 실측한다. 규격 위반은 눈으로 안 보인다.
+  const listing = execFileSync('C:/Windows/System32/tar.exe', ['-tf', ZIP], { encoding: 'utf8' });
+  const bad = listing.split('\n').filter((l) => l.includes('\\'));
+  if (bad.length > 0) {
+    throw new Error(`zip 항목에 역슬래시가 있습니다: ${bad.slice(0, 3).join(', ')}`);
+  }
+  console.log(`zip 항목 ${listing.trim().split('\n').length}건 · 경로 구분자 정상`);
+
   console.log(`\n${ZIP} — 이 파일을 웹스토어에 올립니다.`);
   console.log(`${OUT}/ — 내용 확인용. 개발용 ${SRC}/는 건드리지 않았습니다.`);
 }
