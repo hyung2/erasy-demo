@@ -82,7 +82,16 @@ const TIERS: Record<string, Tier> = {
   'verify-deletion-e2e': 'server',
 
   'verify-prod-health': 'prod',
+  'verify-prod-surface-measured': 'prod',
 };
+
+/**
+ * 일괄 실행에 넣지 않는 검사와 그 이유. 값이 이유인 것이 중요하다 — 이유 없이 빼면
+ * 다음 사람이 "왜 안 도는지" 모른 채 넘어가고, 그때부터 그 검사는 없는 것이 된다.
+ */
+const MANUAL = new Map<string, string>([
+  ['verify-judge-login', '심사용 계정 자격증명을 인자로 받는다 — 제출 직전 수동 실행'],
+]);
 
 /**
  * 판정을 내지 않는 점검 스크립트. 이름만 verify-*이고 상태를 찍은 뒤 늘 성공으로 끝난다.
@@ -198,10 +207,15 @@ async function main(): Promise<void> {
   const onDisk = readdirSync('scripts')
     .filter((f) => f.startsWith('verify-') && f.endsWith('.ts') && f !== 'verify-all.ts')
     .map((f) => f.replace(/\.ts$/, ''));
-  const unlisted = onDisk.filter((n) => !(n in TIERS));
+  const unlisted = onDisk.filter((n) => !(n in TIERS) && !MANUAL.has(n));
   if (unlisted.length > 0) {
     console.log(`\n미분류 가드 ${unlisted.length}종 — 계층 표에 없어 실행되지 않는다:`);
     unlisted.forEach((n) => console.log(`  ${n}`));
+  }
+  const manualHere = onDisk.filter((n) => MANUAL.has(n));
+  if (manualHere.length > 0) {
+    console.log(`\n수동 실행 ${manualHere.length}종:`);
+    manualHere.forEach((n) => console.log(`  ${n} — ${MANUAL.get(n)}`));
   }
 
   const tiers = only ? [only] : all ? TIER_ORDER : (['static', 'db'] as Tier[]);

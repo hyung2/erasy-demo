@@ -11,7 +11,7 @@ import { hashPassword } from '../lib/password';
 
 export {};
 
-const BASE = 'https://service-app-seven-virid.vercel.app';
+const BASE = (process.argv[2] ?? 'https://service-app-seven-virid.vercel.app').replace(/\/$/, '');
 const prisma = new PrismaClient();
 const ID = `uprobe-prodcode-${Date.now()}`;
 const EMAIL = `${ID}@example.invalid`;
@@ -74,11 +74,22 @@ async function main(): Promise<void> {
 
   console.log(`x-vercel-cache: ${res.headers.get('x-vercel-cache') ?? '(없음 — 동적)'}`);
   console.log(`종합 ${body.data?.score} · S축 measured=${s?.measured} score=${s?.score}`);
-  console.log(
-    s?.measured
-      ? '판정: prod가 **새 코드**를 돌린다 (미인지 관측만으로 S축을 잰다)'
-      : '판정: prod가 **옛 코드**를 돌린다 (사용 이력이 없으면 S축을 버린다)',
-  );
+
+  const checks: [boolean, string][] = [
+    [res.status === 200, `1 점수 조회 200 (실제 ${res.status})`],
+    [
+      s?.measured === true,
+      '2 미인지 관측만으로 S축을 잰다 — false면 배포된 코드가 옛것이거나 회귀했다',
+    ],
+    [typeof s?.score === 'number' && s.score < 100, `3 미인지 계정이 점수를 끌어내린다 (${s?.score})`],
+  ];
+  let passed = 0;
+  for (const [ok, msg] of checks) {
+    if (ok) passed += 1;
+    else console.error(`  FAIL ${msg}`);
+  }
+  console.log(`verify-prod-surface-measured: ${passed} passed, ${checks.length - passed} failed`);
+  if (passed < checks.length) process.exitCode = 1;
 }
 
 main()
