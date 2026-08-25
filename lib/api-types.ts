@@ -3,6 +3,15 @@
 // W2에서 실구현이 이 shape를 그대로 채운다(계약 고정).
 import type { AxisKey, AxisScore, ExpectedGainItem } from './score-v2';
 
+/**
+ * "마지막 사용 시각을 모른다"를 나타내는 센티넬(일).
+ *
+ * null 대신 큰 수를 쓰는 것은 기존 계약이다 — 정렬·버킷 역매핑이 숫자를 전제한다.
+ * 다만 **집계할 때는 반드시 걸러야 한다.** 이 값이 휴면 계산에 섞이면 모르는 것이
+ * 위험으로 둔갑한다.
+ */
+export const UNKNOWN_LAST_USED_DAYS = 3650;
+
 export type ApiEnvelope<T> = {
   data: T;
   _stub?: boolean; // true = 아직 더미/미구현(정직 표기). 실구현 시 제거.
@@ -17,7 +26,11 @@ export type AccountDTO = {
   category: 'social' | 'overseas' | 'domestic' | 'unknown';
   provider: 'google' | 'naver' | 'kakao' | 'apple' | 'manual';
   source: 'seed' | 'user_input' | 'oauth_linked' | 'mail_scan' | 'social_link';
-  lastUsedDays: number; // lastUsedAt에서 파생(런타임)
+  // lastUsedAt에서 파생(런타임). 마지막 사용 시각을 모르면 UNKNOWN_LAST_USED_DAYS.
+  //   **미상은 "오래 안 씀"이 아니다.** 소셜 연결목록은 플랫폼이 사용일을 주지 않아
+  //   실계정 265개 중 205개가 미상이었는데, 집계가 그걸 휴면으로 세어 화면이
+  //   "81%가 12개월 이상 미사용"이라고 말했다(2026-08-25 실측). 우리가 모르는 것이다.
+  lastUsedDays: number;
   breached: boolean;
   risk: 'low' | 'medium' | 'high'; // deriveRisk 파생
   // 자가신고 신호(T5.4) — 카드에 "직접 입력" 라벨 표시 근거. seed 폴백은 undefined.

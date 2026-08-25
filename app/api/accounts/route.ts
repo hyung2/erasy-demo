@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { resolveSessionUser } from '@/lib/session-user';
+import { UNKNOWN_LAST_USED_DAYS } from '@/lib/api-types';
 import type { ApiEnvelope, AccountDTO, AccountCreateRequest } from '@/lib/api-types';
 import { accounts as seed, deriveRisk, type LinkMethod } from '@/lib/dummy-data';
 import { ensureServicesForNames } from '@/lib/service-registry';
@@ -30,7 +31,8 @@ function riskOf(
 }
 
 function daysSince(d: Date | null): number {
-  if (!d) return 3650; // 미상 → 장기 미사용으로 취급(휴면)
+  // 미상은 미상이다. 이 값을 "휴면"으로 읽던 것은 집계 쪽의 잘못이었고 그건 고쳤다.
+  if (!d) return UNKNOWN_LAST_USED_DAYS;
   return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86_400_000));
 }
 

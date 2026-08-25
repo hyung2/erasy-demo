@@ -16,6 +16,7 @@ import { ServiceAvatar } from '@/components/ServiceAvatar';
 import { useDemo } from '@/components/DemoStateClient';
 import { primaryLink } from '@/lib/deep-links';
 import { destinationFor } from '@/lib/service-links';
+import { UNKNOWN_LAST_USED_DAYS } from '@/lib/api-types';
 import type {
   AccountDTO,
   CleanupQueueItemDTO,
@@ -34,7 +35,7 @@ const riskRank: Record<AccountDTO['risk'], number> = { high: 3, medium: 2, low: 
 
 /** 미사용 기간 표기. 활동일을 모르는 계정(A1 발견분 다수)에 "0개월"이라고 쓰지 않는다. */
 function unusedLabel(a: AccountDTO): string {
-  if (a.lastUsedDays >= 3650) return '마지막 사용 시점 미상';
+  if (a.lastUsedDays >= UNKNOWN_LAST_USED_DAYS) return '마지막 사용 시점 미상';
   const months = Math.floor(a.lastUsedDays / 30);
   if (months < 1) return '최근 사용';
   if (months >= 12) {

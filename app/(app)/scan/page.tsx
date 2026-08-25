@@ -9,6 +9,7 @@ import { DISCOVERY_PATHS, linksByPath, type DiscoveryPath } from '@/lib/deep-lin
 import GmailScan from '@/components/GmailScan';
 import ConnectionImport from '@/components/ConnectionImport';
 import NextStep from '@/components/NextStep';
+import { UNKNOWN_LAST_USED_DAYS } from '@/lib/api-types';
 import type {
   AccountDTO,
   LastUsedBucket,
@@ -59,7 +60,7 @@ const BUCKET_OPTIONS: { value: LastUsedBucket; label: string }[] = [
 const riskRank: Record<Risk, number> = { high: 2, medium: 1, low: 0 };
 
 function lastUsedLabel(d: number): string {
-  if (d >= 3650) return '미상';
+  if (d >= UNKNOWN_LAST_USED_DAYS) return '미상';
   if (d < 1) return '오늘';
   if (d < 30) return `${d}일 전`;
   if (d < 365) return `${Math.round(d / 30)}개월 전`;
@@ -186,7 +187,10 @@ export default function ScanPage() {
         .filter((a) => {
           if (filter === 'social') return a.category === 'social';
           if (filter === 'overseas') return a.category === 'overseas';
-          if (filter === 'unused') return a.lastUsedDays >= 365;
+          // 미상은 "미사용"이 아니다 — 목록은 이미 '미상'으로 표시하는데
+          // 필터만 휴면으로 세면 같은 행이 두 말을 하게 된다.
+          if (filter === 'unused')
+            return a.lastUsedDays >= 365 && a.lastUsedDays < UNKNOWN_LAST_USED_DAYS;
           return true;
         })
         .sort((a, b) => {

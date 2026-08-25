@@ -15,6 +15,7 @@ import type {
   AlertDTO,
   GuardDTO,
 } from '@/lib/api-types';
+import { UNKNOWN_LAST_USED_DAYS } from '@/lib/api-types';
 import type { AxisKey, ActionType } from '@/lib/score-v2';
 // peerMonthlyAvg만 남는다 — 또래 평균은 관측치가 아니라 예시 기준선이고, 화면이 "예시" 배지로
 // 그 사실을 말한다. 활동 피드는 실데이터(/api/guard)로 옮겼다.
@@ -31,6 +32,8 @@ type Inventory = {
   overseas: number;
   social: number;
   unused: number;
+  /** 마지막 사용 시각을 모르는 계정. 휴면이 아니라 **정보가 없는** 것이다. */
+  unknownLastUsed: number;
   highRisk: number;
 };
 
@@ -44,7 +47,14 @@ function summarize(list: AccountDTO[]): Inventory {
     //   화면이 된다(2026-08-24 실계정 실측). 유출 건수는 Breach 원본으로만 센다.
     overseas: list.filter((a) => a.category === 'overseas').length,
     social: list.filter((a) => a.category === 'social').length,
-    unused: list.filter((a) => a.lastUsedDays >= DORMANT_DAYS).length,
+    // 미상을 휴면에 섞지 않는다.
+    //   소셜 연결목록은 플랫폼이 사용일을 주지 않는다. 그걸 3650일로 세면 화면이
+    //   "81%가 12개월 이상 미사용"이라고 말하는데, 그 81%는 관측이 아니라 우리가
+    //   만들어 낸 값이다(2026-08-25 실측: 265개 중 205개가 미상).
+    unused: list.filter(
+      (a) => a.lastUsedDays >= DORMANT_DAYS && a.lastUsedDays < UNKNOWN_LAST_USED_DAYS,
+    ).length,
+    unknownLastUsed: list.filter((a) => a.lastUsedDays >= UNKNOWN_LAST_USED_DAYS).length,
     highRisk: list.filter((a) => a.risk === 'high').length,
   };
 }
@@ -286,6 +296,9 @@ export default function DashboardPage() {
     { key: '소셜 로그인', dot: 'is-accent', cls: '', count: inv?.social ?? 0 },
     { key: '해외 서비스', dot: 'is-caution', cls: ' is-caution', count: inv?.overseas ?? 0 },
     { key: '미사용 12개월+', dot: 'is-warn', cls: ' is-warn', count: inv?.unused ?? 0 },
+    // 모르는 것을 위험 옆에 나란히 둔다. 감추면 "미사용 11개"만 보여 규모가 왜곡되고,
+    // 휴면에 섞으면 모르는 것이 위험이 된다.
+    { key: '사용일 미상', dot: '', cls: '', count: inv?.unknownLastUsed ?? 0 },
   ];
 
   // 4축 진단·추천은 API가 준비된 경우 노출. 정리 요청을 접수했다고 숨기지 않는다 —
