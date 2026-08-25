@@ -67,12 +67,27 @@ async function main() {
   console.log('[snapshot.axes]', JSON.stringify(snap?.axes));
 
   // 판정 요약
+  //
+  // 이 스크립트는 오랫동안 판정을 **출력만** 하고 종료 코드 0으로 끝났다. 그래서 08-21부터
+  // `4축measured=false`를 계속 찍고 있었는데도 성공으로 집계됐고, 데모 계정이 유출을 띄운 채
+  // "아직 대조하지 않았어요"라고 말하는 상태가 나흘간 남았다(2026-08-25 발견).
+  // 판정을 적어 두고 종료 코드로 내보내지 않으면 아무도 읽지 않는다.
+  //
+  // 종합 점수는 게이트로 쓰지 않는다 — 시드가 상대 시각을 쓰므로 하루 사이에도 1점씩 움직인다.
+  // 흔들리는 값을 게이트에 걸면 실패에 무뎌지고, 무뎌진 게이트는 없는 것과 같다.
+  // 대신 구조적 주장 둘을 건다: 4축이 모두 측정되는가, 축이 스냅샷에 남아 재조회되는가.
   const axesOk = AXES.every((k) => r.axes[k].measured);
-  const compositeOk = r.score === 24;
   const axesPersisted = snap?.axes != null;
-  console.log(
-    `[verdict] composite24=${compositeOk} · 4축measured=${axesOk} · axes재조회=${axesPersisted}`,
-  );
+  const unmeasured = AXES.filter((k) => !r.axes[k].measured);
+
+  if (!axesOk) console.log(`  FAIL 4축 전부 측정 — 미측정: ${unmeasured.join(', ')}`);
+  if (!axesPersisted) console.log('  FAIL 스냅샷에 axes가 남아 재조회된다');
+
+  const passed = (axesOk ? 1 : 0) + (axesPersisted ? 1 : 0);
+  const failed = 2 - passed;
+  console.log(`[종합] ${r.score}점 (게이트 아님 — 값 확인용)`);
+  console.log(`verify-score-db-v2: ${passed} passed, ${failed} failed`);
+  if (failed > 0) process.exitCode = 1;
 }
 
 main()

@@ -236,6 +236,21 @@ function buildRows(userId: string, idPrefix: string) {
   return { accountRows, breachRows, accessLogRows, cleanupRows, snapshotRows };
 }
 
+/**
+ * 유출 대조 시각을 함께 찍는다.
+ *
+ * 데모 데이터는 유출 이력을 심는다. 그런데 `User.breachCheckedAt`이 비어 있으면 점수 엔진은
+ * "아직 대조하지 않았다"로 읽어 **유출 축을 측정하지 않는다**. 그 결과 같은 화면에서 활동은
+ * "미해결 유출 3건"이라 말하고 요약은 "아직 대조하지 않았어요"라고 말했다. 종합 점수도 4축이
+ * 아니라 3축으로만 계산됐다(2026-08-25 발견).
+ *
+ * 심어 둔 유출은 곧 "대조해서 찾아낸 결과"다. 데이터와 시각을 함께 써야 두 말이 하나가 된다.
+ * 반대 방향으로 맞추는 것 — 대조 시각을 비운 채 유출만 심는 것 — 은 화면을 계속 어긋나게 둔다.
+ */
+function stampBreachChecked(db: PrismaClient, userId: string) {
+  return db.user.update({ where: { id: userId }, data: { breachCheckedAt: new Date() } });
+}
+
 // 한 사용자에게 데모 인벤토리 일습을 적재한다. User 레코드는 호출자가 먼저 보장해야 한다.
 export async function provisionDemoData(
   db: PrismaClient,
@@ -271,6 +286,7 @@ export async function provisionDemoData(
     for (const { id, ...data } of rows.snapshotRows) {
       await db.scoreSnapshot.upsert({ where: { id }, update: data, create: { id, ...data } });
     }
+    await stampBreachChecked(db, userId);
     return { provisioned: true, accounts: rows.accountRows.length };
   }
 
@@ -288,6 +304,7 @@ export async function provisionDemoData(
     db.accessLog.createMany({ data: rows.accessLogRows }),
     db.cleanupRequest.createMany({ data: rows.cleanupRows }),
     db.scoreSnapshot.createMany({ data: rows.snapshotRows }),
+    stampBreachChecked(db, userId),
   ]);
 
   return { provisioned: true, accounts: rows.accountRows.length };

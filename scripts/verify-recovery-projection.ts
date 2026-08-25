@@ -44,21 +44,27 @@ async function main() {
     base.recovery.beforeComposite === base.score,
     `before=${base.recovery.beforeComposite} · 종합=${base.score}`,
   );
-  // 계단 최종은 92다. 한때 93이었고 그 1점은 **유출축을 만점으로 세던 값**이었다.
-  //   08-21에 "대조한 적 없으면 만점을 주지 않는다"로 바꾸면서 E축이 미측정으로 빠졌고,
-  //   blend가 측정된 축만으로 재정규화하면서 최종이 1점 내려왔다(실측: 대조 시각을 넣으면
-  //   E축 100 · 최종 93, 빼면 미측정 · 최종 92).
+  // 계단 최종은 93이고, 그 값은 **유출 축이 측정될 때** 나온다.
   //
-  //   숫자만 92로 바꿔 두면 다음에 같은 일이 또 낡은 채로 남는다. **왜 92인지**를 함께 잰다 —
-  //   E축이 다시 측정된 것으로 세어지면 measured가 true가 되어 여기서 걸린다.
+  //   08-24에 이 기대값을 92로 낮췄다. 근거는 "08-21에 대조한 적 없으면 만점을 주지 않기로
+  //   했으니 E축이 미측정으로 빠지는 게 맞다"였다. 그 절반은 맞았다 — 대조하지 않았으면
+  //   재지 않는 것이 옳다. 틀린 것은 **데모 사용자가 대조하지 않은 상태였다는 점 자체**다.
+  //   프로비저닝이 유출 이력을 심으면서 대조 시각은 찍지 않아, 화면이 "미해결 유출 3건"과
+  //   "아직 대조하지 않았어요"를 동시에 말하고 있었다(2026-08-25 발견).
+  //
+  //   즉 이 가드는 낡은 게 아니라 그 결함을 계속 가리키고 있었고, 우리가 가드를 결함에
+  //   맞춰 내렸다. **가드가 FAIL이면 기대값을 의심하되, 의심의 끝은 코드여야 한다.**
+  //
+  //   심어 둔 유출은 "대조해서 찾아낸 결과"이므로 대조 시각이 함께 찍힌다 → E축 측정 → 93.
+  //   대조 시각이 다시 누락되면 measured가 false가 되어 여기서 걸린다.
   check(
-    'a2 투영 after의 유출축은 미측정 — 대조 이력이 없다',
-    base.recovery.afterAxes.exposure.measured === false,
+    'a2 투영 after의 유출축이 측정된다 — 심어 둔 유출은 대조된 결과다',
+    base.recovery.afterAxes.exposure.measured === true,
     `measured=${base.recovery.afterAxes.exposure.measured}`,
   );
   check(
-    'a3 투영 after = 92(유출축을 뺀 계단 최종)',
-    base.recovery.afterComposite === 92,
+    'a3 투영 after = 93(유출축을 포함한 계단 최종)',
+    base.recovery.afterComposite === 93,
     `after=${base.recovery.afterComposite}`,
   );
 
