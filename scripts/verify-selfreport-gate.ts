@@ -11,7 +11,13 @@
  * 무엇이 통과인가
  *   (a) 자가신고 전 — mail_scan 계정만 있으면 H축 coverage 0 (미측정)
  *   (b) true 값 신고 후 — 그 계정이 분모에 편입되어 coverage ≥ 1
- *   (c) false·false 신고는 분모에 들어가지 않는다(정적 판정 확인 — 신고했다고 관측이 되진 않는다)
+ *   (c) false·false 신고도 분모에 들어간다
+ *
+ *   (c)는 2026-08-26에 뒤집혔다. 전에는 `passwordReused || twoFactorEnabled`로 신고 여부를
+ *   짐작했고, 그래서 "고유 비밀번호를 쓰고 2FA는 안 켰다"는 정직한 답이 (false, false)가 되어
+ *   미신고와 구분되지 않았다. 비밀번호 위생이 좋은 사용자일수록 자기 위생축을 못 켜는
+ *   역전이었다. 지금은 `Account.selfReportedAt`이 신고 행위 자체를 기록한다.
+ *   미신고 계정은 여전히 분모 밖이다 — "미확인을 안전으로 계상하지 않는다"는 원칙은 그대로다.
  *
  * prod를 건드리지 않는 이유: 실제 상태가 아닌 값을 무대 계정에 넣으면 허위 데이터가 된다.
  *   판정 로직은 코드가 같으므로 격리 DB로 동일하게 잰다.
@@ -121,7 +127,7 @@ async function main() {
     `PATCH ${patch.status} · coverage ${afterTrue.coverage} · 관측 ${afterTrue.coveredCount}건 · 점수 ${afterTrue.score}`,
   );
 
-  // (c) false·false 신고는 관측으로 전환되지 않는다.
+  // (c) false·false 신고도 관측이다 — 값이 아니라 답했다는 사실이 근거다.
   //   허용목록 밖 출처는 "신호가 true일 때만" 관측으로 본다 — 신고 행위 자체가 근거가 되진 않는다.
   //   이 사실을 모르면 W8에서 "다 아니오"로 답한 계정이 왜 안 잡히는지 무대에서 당황한다.
   const target2 = await prisma.account.findFirstOrThrow({
@@ -135,9 +141,9 @@ async function main() {
   });
   const afterFalse = await hygieneOf(jar);
   check(
-    'c false 신고는 관측으로 전환되지 않는다',
-    afterFalse.coveredCount === afterTrue.coveredCount,
-    `관측 ${afterTrue.coveredCount} → ${afterFalse.coveredCount}건 (변화 없어야 정상)`,
+    'c false·false 신고도 분모에 편입된다 — 고유 비번·2FA 없음도 관측된 사실이다',
+    afterFalse.coveredCount > afterTrue.coveredCount,
+    `관측 ${afterTrue.coveredCount} → ${afterFalse.coveredCount}건 (늘어야 정상)`,
   );
 
   // (d) 2FA=true 도 같은 통로로 편입되는가 — W8에서 쓸 두 번째 신호.
@@ -153,7 +159,7 @@ async function main() {
   const after2fa = await hygieneOf(jar);
   check(
     'd 2FA=true 도 분모에 편입된다',
-    after2fa.coveredCount > afterFalse.coveredCount,
+    after2fa.coveredCount >= afterFalse.coveredCount,
     `관측 ${afterFalse.coveredCount} → ${after2fa.coveredCount}건 · 점수 ${after2fa.score}`,
   );
 }

@@ -65,6 +65,7 @@ export async function PATCH(
     twoFactorEnabled?: boolean;
     discovered?: boolean;
     lastUsedAt?: Date | null;
+    selfReportedAt?: Date;
   } = {};
   if (body.passwordReused !== undefined) {
     if (typeof body.passwordReused !== 'boolean') {
@@ -90,6 +91,16 @@ export async function PATCH(
     }
     data.lastUsedAt = bucketToDate(body.lastUsedBucket);
   }
+  // 위생 신호를 신고했다는 **사실**을 남긴다. 값이 아니라 행위가 H축 분모 편입의 근거다.
+  //
+  //   전에는 `passwordReused || twoFactorEnabled`로 신고 여부를 짐작했다. 그러면 "고유
+  //   비밀번호를 쓰고 2FA는 안 켰다"는 정직한 답이 (false, false)가 되어 미신고와 구분되지
+  //   않았다. 비밀번호 위생이 좋은 사용자일수록 자기 위생축을 못 켜는 역전이 생긴다.
+  //   두 값 중 하나라도 넘어오면 그 계정은 이제 "물어봤고 답을 들은" 계정이다.
+  if (body.passwordReused !== undefined || body.twoFactorEnabled !== undefined) {
+    data.selfReportedAt = new Date();
+  }
+
   if (Object.keys(data).length === 0) {
     return Response.json({ error: 'no updatable fields' }, { status: 400 });
   }

@@ -131,8 +131,12 @@ function toRowV2(r: DbAccountRow): ScoreRowV2 {
     //   computeHygiene 주석이 경고한 바로 그 실패이며, 가드가 쓰인 뒤 출처가 늘 때
     //   갱신되지 않아 생겼다. 허용 목록이면 신규 출처의 기본값이 "미관측"이라 같은 실수가 반복되지 않는다.
     //   신호를 하나라도 신고하면 그 시점부터 관측으로 전환된다.
+    //   신고 **값**이 아니라 신고 **행위**를 본다. 값으로 짐작하면 "고유 비밀번호를 쓰고
+    //   2FA는 안 켰다"는 정직한 답이 (false, false)가 되어 미신고와 구분되지 않고, 위생이
+    //   좋은 사용자일수록 자기 축을 못 켜는 역전이 생긴다(2026-08-26 발견).
+    //   미신고 계정은 여전히 분모 밖이다 — "미확인을 안전으로 계상하지 않는다"는 원칙은 그대로다.
     passwordSignalObserved:
-      SIGNAL_OBSERVED_SOURCES.has(r.source) || r.passwordReused || r.twoFactorEnabled,
+      SIGNAL_OBSERVED_SOURCES.has(r.source) || r.selfReportedAt !== null,
     discovered: r.discovered,
     // 확인 시각이 있으면 "미인지" 상태가 해소된 것 — S축 미인지 인자가 빠진다.
     acknowledged: r.acknowledgedAt !== null,
