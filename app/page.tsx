@@ -35,8 +35,9 @@ export default function LoginPage() {
 
   function startGoogle() {
     setPending('google');
-    // 콜백 성공 후 /scanning으로 복귀(스캔 연출 → /dashboard). signIn이 페이지를 이탈시킨다.
-    void signIn('google', { redirectTo: '/scanning' });
+    // 콜백 성공 후 /after-login이 착지점을 정한다 — 계정이 없으면 온보딩, 있으면 대시보드.
+    // 전에는 늘 /scanning으로 보내서, 이미 계정을 모아 둔 사용자도 매번 4단계를 지나야 했다.
+    void signIn('google', { redirectTo: '/after-login' });
   }
 
   function switchMode(next: Mode) {
@@ -78,7 +79,7 @@ export default function LoginPage() {
       }
 
       // 성공 — 구글 경로와 동일하게 스캔 연출을 거쳐 대시보드로.
-      window.location.href = '/scanning';
+      window.location.href = '/after-login';
     } catch {
       setError('네트워크 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
       setPending(null);

@@ -18,6 +18,7 @@ export default auth((req) => {
 // (미인증 상태로 열면 권한 창까지 간 뒤 서버에서 401을 받는 헛걸음이 된다).
 export const config = {
   matcher: [
+    '/after-login',
     '/dashboard/:path*',
     '/scan/:path*',
     '/scanning/:path*',

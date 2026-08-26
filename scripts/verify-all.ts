@@ -81,6 +81,7 @@ const TIERS: Record<string, Tier> = {
   'verify-whois': 'net',
 
   'verify-deletion-e2e': 'server',
+  'verify-after-login': 'server',
 
   'verify-prod-health': 'prod',
   'verify-prod-surface-measured': 'prod',
