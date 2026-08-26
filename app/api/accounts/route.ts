@@ -65,6 +65,8 @@ export async function GET() {
     const rows = await prisma.account.findMany({
       where: { userId },
       orderBy: [{ breached: 'desc' }, { lastUsedAt: 'asc' }],
+      // 표시명은 정규화된 Service에 있다. 사람이 확인한 이름이 있으면 그것을 쓴다.
+      include: { service: { select: { displayName: true, verifiedAt: true } } },
     });
 
     // 실계정 0건 → 빈 목록. 예전에는 시드 24건으로 폴백했는데, 그러면 방금 가입한 사람이
@@ -80,7 +82,16 @@ export async function GET() {
       const lastUsedDays = daysSince(r.lastUsedAt);
       return {
         id: r.id,
-        name: r.name,
+        // 사람이 **확인한** 표시명만 쓴다(verifiedAt). 자동 수집이 채운 값은 수집 원문과
+        // 다를 이유가 없고, 확인되지 않은 값을 앞세우면 화면이 근거 없이 바뀐다.
+        //
+        // 확인된 표시명이 없으면 수집 원문 그대로 둔다. 도메인으로 수집된 계정을 보기 좋게
+        // 만들려면 "bccard.com → BC카드" 같은 번역이 필요한데, 그건 아는 것이 아니라
+        // 지어내는 것이다. TLD를 기계적으로 떼면 "Bccard"가 되어 도메인보다 나쁘다.
+        // 모르는 이름은 받은 그대로가 가장 정직하다(2026-08-26 실측: 무대 계정 265건 중
+        // 도메인 표기 53건, 그중 확인된 표시명 보유 1건).
+        name: r.service?.verifiedAt && r.service.displayName ? r.service.displayName : r.name,
+        linkName: r.name,
         category: r.category,
         provider: r.provider,
         source: r.source,

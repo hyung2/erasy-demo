@@ -318,7 +318,11 @@ export default function CleanupPage() {
                   {rows.map((a) => {
                     const isDone = doneIds.has(a.id);
                     const isQueued = queuedIds.has(a.id);
-                    const dest = isQueued ? destinationFor(a) : null;
+                    // 링크는 **수집 원문**으로 찾는다. 표시명으로 찾으면 이름을 다듬는
+                    // 변경이 정리 경로를 조용히 끊는다(2026-08-26).
+                    const dest = isQueued
+                      ? destinationFor({ name: a.linkName ?? a.name, provider: a.provider })
+                      : null;
                     if (isDone) {
                       return (
                         <div className="cleanup-item is-done" key={a.id}>

@@ -57,6 +57,7 @@ const TIERS: Record<string, Tier> = {
   'verify-surface-measured': 'static',
   'verify-selfreport-payload': 'static',
   'verify-axis-visibility': 'static',
+  'verify-display-name': 'static',
 
   'verify-account-deletion': 'db',
   'verify-acknowledge': 'db',

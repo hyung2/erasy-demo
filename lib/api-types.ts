@@ -20,7 +20,16 @@ export type ApiEnvelope<T> = {
 // GET /api/accounts — 계정 인벤토리
 export type AccountDTO = {
   id: string;
+  /** 화면에 쓰는 이름. 사람이 확인한 표시명이 있으면 그것, 없으면 수집 원문. */
   name: string;
+  /**
+   * 링크를 찾을 때 쓰는 이름 — **수집 원문 그대로**.
+   *
+   * 보여주는 이름과 찾는 이름을 나누는 이유: 정리 경로는 서비스명으로 카탈로그를 뒤져
+   * 도메인을 얻는다. 표시명을 예쁘게 바꾸면("google.com" → "Google Drive") 그 조회가
+   * 빗나가 링크가 사라진다. 화면을 다듬는 변경이 기능을 조용히 끄는 일은 없어야 한다.
+   */
+  linkName?: string;
   // unknown: 소셜 연결목록처럼 서비스명만 오는 입력에서 분류를 확정할 수 없는 경우.
   // 임의로 domestic/overseas를 찍지 않는다.
   category: 'social' | 'overseas' | 'domestic' | 'unknown';
