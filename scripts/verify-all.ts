@@ -31,7 +31,8 @@ type Tier = 'static' | 'db' | 'net' | 'server' | 'prod';
  *   static  아무 자원도 필요 없다 — 순수 함수와 소스 스캔
  *   db      Neon에 픽스처를 만들고 지운다. **prod와 같은 DB**이므로 순차 실행한다
  *   net     외부 API를 친다 (HIBP·KISA whois). 상대 사정으로 실패할 수 있다
- *   server  **격리 DB + 그 DB에 물린 로컬 서버**가 있어야 한다. 이 계층은 사용자를 만들고
+ *   server  **격리 스택**(격리 DB + 그 DB에 물린 로컬 서버)이 있어야 한다.
+ *           일부는 DB만 쓰고 서버는 안 쓴다 — 준비물이 상위집합이라 같은 계층에 둔다. 이 계층은 사용자를 만들고
  *           지우므로 prod DB에서 돌리면 안 되고, 실제로 가드 스스로 localhost가 아니면
  *           멈춘다. 띄우는 법:
  *             docker run -d --name erasy-qa-pg -e POSTGRES_USER=qa -e POSTGRES_PASSWORD=qa \
@@ -84,6 +85,7 @@ const TIERS: Record<string, Tier> = {
 
   'verify-deletion-e2e': 'server',
   'verify-after-login': 'server',
+  'verify-breach-rescan': 'server',
 
   'verify-prod-health': 'prod',
   'verify-prod-surface-measured': 'prod',
