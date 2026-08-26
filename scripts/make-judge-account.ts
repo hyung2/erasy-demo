@@ -17,7 +17,17 @@ import { provisionDemoData } from '../lib/provision-demo';
 export {};
 
 const prisma = new PrismaClient();
-const [email, password] = process.argv.slice(2);
+const args = process.argv.slice(2);
+/**
+ * --empty 는 데모 데이터를 넣지 않는다. 웹스토어 심사자용이다.
+ *
+ * 심사자가 확인해야 하는 것은 **확장이 연결목록을 가져오는 동작**이고, 그 버튼은 온보딩에
+ * 있다. 그런데 계정을 이미 가진 사용자는 로그인 시 대시보드로 바로 간다(2026-08-26).
+ * 데모 데이터를 넣어 주면 심사자가 온보딩을 못 만나고 "기능 확인 불가"가 된다.
+ * 빈 계정이라야 로그인 직후 온보딩에 떨어진다.
+ */
+const EMPTY = args.includes('--empty');
+const [email, password] = args.filter((a) => !a.startsWith('--'));
 
 async function main(): Promise<void> {
   if (!email || !password) {
@@ -35,7 +45,9 @@ async function main(): Promise<void> {
   const u = await prisma.user.create({
     data: { email, name: '이레이지 심사용', passwordHash: await hashPassword(password) },
   });
-  const r = await provisionDemoData(prisma, u.id, { idPrefix: `judge-${u.id}-` });
+  const r = EMPTY
+    ? { accounts: 0 }
+    : await provisionDemoData(prisma, u.id, { idPrefix: `judge-${u.id}-` });
 
   const [accounts, breaches, checked] = await Promise.all([
     prisma.account.count({ where: { userId: u.id } }),
@@ -43,9 +55,14 @@ async function main(): Promise<void> {
     prisma.user.findUnique({ where: { id: u.id }, select: { breachCheckedAt: true } }),
   ]);
 
-  console.log(`계정 생성 — ${email}`);
+  console.log(`계정 생성 — ${email}${EMPTY ? ' (빈 계정 — 로그인 시 온보딩으로)' : ''}`);
   console.log(`  적재 ${r.accounts}건 · 인벤토리 ${accounts}건 · 유출 ${breaches}건`);
-  console.log(`  대조 시각 ${checked?.breachCheckedAt?.toISOString() ?? '없음(결함)'}`);
+  // 유출이 0건이면 대조 시각이 없는 것이 정상이다. 유출을 심어 두고 시각만 비어 있을 때가
+  // 결함이다(2026-08-25에 고친 그 상태). 둘을 같은 말로 적으면 정상을 결함으로 읽게 된다.
+  const stamp = checked?.breachCheckedAt?.toISOString();
+  console.log(
+    `  대조 시각 ${stamp ?? (breaches > 0 ? '없음 — 유출이 있는데 비어 있다(결함)' : '없음(유출 0건이라 정상)')}`,
+  );
 }
 
 main()
