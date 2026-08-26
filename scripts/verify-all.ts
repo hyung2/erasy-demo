@@ -83,6 +83,7 @@ const TIERS: Record<string, Tier> = {
 
   'verify-prod-health': 'prod',
   'verify-prod-surface-measured': 'prod',
+  'verify-prod-selfreport': 'prod',
 };
 
 /**
