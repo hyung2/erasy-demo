@@ -103,6 +103,8 @@ export default function ScanPage() {
   // 자가신고 모달 대상 id + 폼. 직접추가 모달.
   const [reportId, setReportId] = useState<string | null>(null);
   const [form, setForm] = useState<SelfReport | null>(null);
+  // 모달을 연 시점의 값. 사용자가 손대지 않은 항목을 저장에서 빼기 위해 쓴다.
+  const [formInitial, setFormInitial] = useState<SelfReport | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -271,22 +273,32 @@ export default function ScanPage() {
   // ── 자가신고 ──
   function openReport(a: AccountDTO) {
     setReportId(a.id);
-    setForm({
+    const initial: SelfReport = {
       passwordReused: a.passwordReused ?? false,
       twoFactorEnabled: a.twoFactorEnabled ?? false,
       lastUsedBucket: daysToBucket(a.lastUsedDays),
       discovered: a.discovered ?? false,
-    });
+    };
+    setForm(initial);
+    setFormInitial(initial);
   }
   async function saveReport() {
     if (!reportId || !form) return;
     setSaving(true);
+    // 사용일은 **바꿨을 때만** 보낸다.
+    //
+    //   버킷은 거친 값이라(1년 이내 → 180일) 서버가 그 대푯값을 날짜로 환산해 저장한다.
+    //   그런데 폼은 이미 관측된 날짜에서 버킷을 역산해 채워 둔 상태다. 손대지 않고 저장하면
+    //   "5일 전"으로 관측된 계정이 "180일 전"으로 덮인다 — 사용자가 말하지 않은 값이 기록되고
+    //   측정해 둔 정밀도가 사라진다. 고른 적 없는 값을 저장하지 않는다(2026-08-26).
     const payload: AccountUpdateRequest = {
       passwordReused: form.passwordReused,
       twoFactorEnabled: form.twoFactorEnabled,
-      lastUsedBucket: form.lastUsedBucket,
       discovered: form.discovered,
     };
+    if (formInitial && form.lastUsedBucket !== formInitial.lastUsedBucket) {
+      payload.lastUsedBucket = form.lastUsedBucket;
+    }
     try {
       const r = await fetch(`/api/accounts/${reportId}`, {
         method: 'PATCH',
@@ -296,6 +308,7 @@ export default function ScanPage() {
       if (r.ok) {
         setReportId(null);
         setForm(null);
+        setFormInitial(null);
         await loadAccounts();
         const next = await refreshScore();
         setToast(next !== null ? `입력 반영 · 안전도 재계산 ${next}점` : '입력 반영됨');
