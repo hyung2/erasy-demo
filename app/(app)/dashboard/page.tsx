@@ -78,21 +78,25 @@ const AXIS_META: Record<AxisKey, { label: string }> = {
 const AXIS_ORDER: AxisKey[] = ['exposure', 'surface', 'hygiene', 'threat'];
 
 /**
- * 화면에 세울 축을 고른다.
+ * 화면에 세울 축을 고른다 — **넷 다 세운다.**
  *
- * 비밀번호 습관은 **우리가 비밀번호를 저장하지 않는 한 잴 수 없다.** 사용자가 계정마다
- * 표를 채워 주면 되지만 그건 이 제품이 하기로 한 일이 아니다(2026-08-21 결정).
- * 잴 길이 없는 축을 카드로 세워 두면 화면이 영구 미완성으로 보이므로 숨긴다.
+ * 2026-08-21에는 비밀번호 습관 축을 미측정일 때 숨겼다. "잴 길이 없는 축을 카드로 세워
+ * 두면 화면이 영구 미완성으로 보인다"는 이유였고, 잴 길이 정말 없었다면 옳았다.
  *
- * 다만 **산식에서는 빼지 않았다.** blend()가 측정된 축만 재정규화하므로 점수에 영향이 없고,
- * 축을 지우면 비밀번호 교체·2단계 인증이라는 회복 액션 두 개가 함께 사라진다.
- * 보안 제품이 가장 기본적인 조언을 못 하게 되는 대가는 화면 카드 한 장보다 크다.
+ * 그런데 길이 있었다. 계정마다 자가신고로 재사용·2단계 인증을 알려주면 그 계정이 분모에
+ * 편입된다. 숨기는 쪽을 택하는 바람에 **사용자는 그 길이 있다는 것조차 알 수 없었다** —
+ * 축은 미측정이라 숨겨지고, 숨겨졌으니 켤 생각을 못 하고, 그래서 영영 미측정이었다
+ * (2026-08-26 발견).
  *
- * 조건을 `measured`로 둔 이유: 나중에 비밀번호 신호를 얻는 경로가 생기면 이 축은
- * 손댈 필요 없이 스스로 돌아온다.
+ * 같은 미측정인데 처리가 갈리던 것도 문제였다. 이상 접속 축은 "확인 불가"로 서 있고
+ * 비밀번호 습관만 사라졌다. 사용자에게 두 축은 같은 상태인데 화면이 다르게 말했다.
+ *
+ * 그래서 지금은 세우되 **물음으로** 세운다. 못 잰다고 말하고, 어떻게 하면 잴 수 있는지
+ * 알려주고, 거기로 가는 문을 낸다. 강요는 하지 않는다 — 답하지 않으면 그대로 미측정이고,
+ * 미측정은 산식에서 빠진다(blend가 측정된 축만 재정규화한다).
  */
-function visibleAxes(axes: Record<AxisKey, { measured: boolean }>): AxisKey[] {
-  return AXIS_ORDER.filter((k) => k !== 'hygiene' || axes.hygiene.measured);
+function visibleAxes(_axes: Record<AxisKey, { measured: boolean }>): AxisKey[] {
+  return AXIS_ORDER;
 }
 
 /**
@@ -102,6 +106,13 @@ function visibleAxes(axes: Record<AxisKey, { measured: boolean }>): AxisKey[] {
  */
 const AXIS_UNMEASURED: Partial<Record<AxisKey, string>> = {
   threat: '아직 확인된 접속 기록이 없어요',
+  // 비밀번호는 저장하지 않으므로 우리가 알아낼 방법이 없다. 알려주시면 그때부터 잰다.
+  hygiene: '비밀번호는 저장하지 않아 우리가 알 수 없어요 — 알려주시면 계산해 드려요',
+};
+
+/** 사용자가 직접 켤 수 있는 축에만 문을 낸다. 접속 기록은 사용자가 만들어 낼 수 없다. */
+const AXIS_UNMEASURED_CTA: Partial<Record<AxisKey, { label: string; href: string }>> = {
+  hygiene: { label: '계정별로 알려주기', href: '/scan' },
 };
 
 // 회복 액션 표시 라벨 + 이동 경로(과장 금지 문구 — 무효화 표현 없음). href는 내부 경로(불변).
@@ -459,6 +470,14 @@ export default function DashboardPage() {
                         AXIS_UNMEASURED[key] ??
                         `확인된 계정 ${a.coveredCount}/${a.totalCount} — 근거 부족`}
                   </p>
+                  {!measured && AXIS_UNMEASURED_CTA[key] && (
+                    <Link
+                      href={AXIS_UNMEASURED_CTA[key]!.href}
+                      className="btn btn-secondary compact"
+                    >
+                      {AXIS_UNMEASURED_CTA[key]!.label}
+                    </Link>
+                  )}
                 </div>
               );
             })}
