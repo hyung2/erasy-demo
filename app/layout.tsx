@@ -8,6 +8,12 @@ export const metadata: Metadata = {
   title: "이레이지(Erasy) 데모 — 흩어진 계정을 되찾다",
   description:
     "흩어진 소셜·해외 계정을 한 화면에 모아 보고, 표준 방식으로 끊고, 유출을 실시간으로 지키는 프라이버시 관리 서비스. 연출 데모(예시 데이터).",
+  // Search Console 소유 확인. 구글 OAuth 동의 화면이 홈페이지 소유자를 확인하지 못해
+  //   인증 이슈가 떴고, vercel.app은 DNS를 우리가 만질 수 없어 페이지 표식으로 확인한다.
+  //   비밀값이 아니다 — 페이지 소스에 공개로 박히라고 발급된 값이다.
+  verification: {
+    google: "kFSYDH2rSx6OYeo1MarI_1nMF7MP0O3uvyFNQzKos_s",
+  },
 };
 
 export default function RootLayout({
