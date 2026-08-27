@@ -117,6 +117,10 @@ const AXIS_UNMEASURED_CTA: Partial<Record<AxisKey, { label: string; href: string
 
 // 회복 액션 표시 라벨 + 이동 경로(과장 금지 문구 — 무효화 표현 없음). href는 내부 경로(불변).
 const ACTION_META: Record<ActionType, { label: string; href: string }> = {
+  // 목록(/scan)으로 보낸다. 대시보드에서 바로 처리하지 않는 것은 확인 API가
+  //   "사용자가 목록을 본 시점이 곧 인지 시점"이라는 전제 위에 서 있기 때문이다.
+  //   목록을 건너뛰고 확인 처리하면 그 전제가 깨진다. 클릭이 하나 느는 편이 맞다.
+  acknowledge: { label: '몰랐던 계정 확인하기', href: '/scan' },
   password_change: { label: '유출된 비밀번호 바꾸기', href: '/breach' },
   resolve_breach: { label: '유출 계정 처리하기', href: '/breach' },
   enable_2fa: { label: '2단계 인증 켜기', href: '/breach' },
@@ -331,6 +335,11 @@ export default function DashboardPage() {
         .slice(0, 3)
     : [];
   const showRecommendations = showDiagnostics && recommendations.length > 0;
+  // "우선 조치"는 하나다. 최약축 액션이 둘 이상일 때(예: 확인·정리가 둘 다 방치 계정 축)
+  //   배지를 전부에 붙이면 무엇부터인지를 말하지 않는 것과 같다. 정렬이 이미
+  //   최약축·상승폭 순이므로 그 첫 칸이 우선 조치다.
+  const primaryAction =
+    recommendations.find((r) => r.axis === weakestAxis)?.actionType ?? null;
 
   // 로그인 후 3.7초 위험 알림 모달: 정리 전에만·흐름당 1회.
   //   0건이면 띄우지 않는 것은 08-18에 고쳤다("위험 계정 0개가 발견됐어요"를 말하던 자리).
@@ -492,8 +501,13 @@ export default function DashboardPage() {
           ? recommendations.map((rec) => {
               const meta = ACTION_META[rec.actionType];
               const gain = Math.round(rec.expectedGain);
-              const isPrimary = rec.axis === weakestAxis;
+              const isPrimary = rec.actionType === primaryAction;
               const count = rec.accountIndices.length;
+              const axisName = AXIS_META[rec.axis].label.split(' — ')[0];
+              // 상승폭 0인 카드가 "점수가 오릅니다"라고 말하던 자리. 미측정 축의 액션은
+              //   해도 오르지 않는다 — 잴 근거가 없어서다. 카드를 지우면 그 축을 켤 길이
+              //   또 사라지므로(AXIS_UNMEASURED_CTA 주석과 같은 함정) 지우지 않고 사실대로 적는다.
+              const axisMeasured = dto?.axes[rec.axis].measured ?? false;
               return (
                 <Link
                   className={`action-card${isPrimary ? ' is-primary' : ''}`}
@@ -506,7 +520,12 @@ export default function DashboardPage() {
                     {gain > 0 && <span className="action-gain">+{gain}점</span>}
                   </h4>
                   <p>
-                    {count}개 계정에 적용돼요 · {AXIS_META[rec.axis].label.split(' — ')[0]} 점수가 오릅니다
+                    {count}개 계정에 적용돼요 ·{' '}
+                    {gain > 0
+                      ? `${axisName} 점수가 오릅니다`
+                      : axisMeasured
+                        ? '지금 점수로는 오르지 않지만 위험은 줄어요'
+                        : `아직 ${axisName} 점수를 재지 못해 지금은 오르지 않아요 — 알려주시면 그때부터 잽니다`}
                   </p>
                   <span className="action-arrow" aria-hidden="true">
                     →

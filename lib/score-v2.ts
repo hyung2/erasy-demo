@@ -41,7 +41,10 @@ export type ActionType =
   | 'revoke'
   | 'logout_sessions'
   | 'resolve_breach'
-  | 'enable_2fa';
+  | 'enable_2fa'
+  // 발견 계정 확인 — S축 "미인지" 인자를 해소하는 회복 레버. ScoreRowV2.acknowledged 주석 참조.
+  // Prisma의 동명 enum(CleanupRequest.actionType)과는 별개다. 확인은 정리 요청을 만들지 않는다.
+  | 'acknowledge';
 
 // ── 엔진 입력 행 — DB row/dummy 공용 평면 shape(순수 유지·단위검증용) ──
 // v1 AccountSignalRow에 v2 신호(discovered·accessLogObserved) 추가.
@@ -512,6 +515,10 @@ export function applyAction(
         return hit(i, r, r.provider === 'manual' && !r.twoFactorEnabled && !r.removed)
           ? { ...r, twoFactorEnabled: true }
           : r;
+      case 'acknowledge':
+        return hit(i, r, r.discovered && !r.acknowledged && !r.removed)
+          ? { ...r, acknowledged: true }
+          : r;
       case 'delete':
       case 'revoke':
         return hit(i, r, !r.removed) ? { ...r, removed: true } : r;
@@ -553,10 +560,13 @@ function targetsFor(rows: ScoreRowV2[], actionType: ActionType): number[] {
       case 'enable_2fa':
         if (r.provider === 'manual' && !r.twoFactorEnabled) out.push(i);
         break;
+      case 'acknowledge':
+        if (r.discovered && !r.acknowledged) out.push(i);
+        break;
       case 'delete':
       case 'revoke':
-        // 방치 표면 대상: 휴면·미인지(제거 시 표면 소멸)
-        if (isDormant(r) || isStale(r) || r.discovered) out.push(i);
+        // 방치 표면 대상: 휴면·묵은 계정(제거 시 표면 소멸)
+        if (isDormant(r) || isStale(r)) out.push(i);
         break;
     }
   });
@@ -586,6 +596,8 @@ export function scoreV2(rows: ScoreRowV2[], ctx: ScoreContext = {}): ScoreV2Resu
     'password_change',
     'resolve_breach',
     'logout_sessions',
+    // 확인은 삭제보다 앞에 둔다 — 같은 S축이고, 모르던 것을 아는 일이 지우는 일보다 앞선다.
+    'acknowledge',
     'delete',
     'enable_2fa',
   ];
@@ -593,6 +605,7 @@ export function scoreV2(rows: ScoreRowV2[], ctx: ScoreContext = {}): ScoreV2Resu
     password_change: 'hygiene',
     enable_2fa: 'hygiene',
     resolve_breach: 'exposure',
+    acknowledge: 'surface',
     delete: 'surface',
     revoke: 'surface',
     logout_sessions: 'threat',

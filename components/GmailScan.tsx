@@ -81,8 +81,17 @@ function loadGis(): Promise<GoogleGlobal> {
 export default function GmailScan({
   onApplied,
   compact,
+  showAcknowledge = true,
 }: {
   onApplied?: () => void;
+  /**
+   * 스캔 결과 안에 확인 버튼을 둘지.
+   *
+   * 온보딩(/scanning)에서는 목록 화면이 따로 없어 여기가 유일한 확인 경로라 켜 둔다.
+   * 계정 목록(/scan)에서는 페이지가 미확인 건수를 세어 상시 버튼을 두므로 끈다 —
+   * 켜 두면 한 화면에 같은 행동이 둘이 되고, 둘 중 무엇을 눌러야 하는지 말해 줄 방법이 없다.
+   */
+  showAcknowledge?: boolean;
   /**
    * 온보딩처럼 페이지가 이미 제목과 안내를 주는 자리에서 쓴다. 제목과 긴 설명을 접어
    * 버튼을 첫 화면 안으로 끌어올린다.
@@ -289,7 +298,7 @@ export default function GmailScan({
           )}
 
           {/* 확인 = S축 "미인지" 인자 해제. 점수가 왜 오르는지 함께 설명해야 게이밍처럼 보이지 않는다. */}
-          {data.hits.length > 0 && (
+          {showAcknowledge && data.hits.length > 0 && (
             <div className="ack-box">
               {acked === null ? (
                 <>

@@ -101,6 +101,7 @@ export async function GET() {
         twoFactorEnabled: r.twoFactorEnabled,
         passwordReused: r.passwordReused,
         discovered: r.discovered,
+        acknowledged: r.acknowledgedAt != null,
       };
     });
     const body: ApiEnvelope<AccountDTO[]> = { data };

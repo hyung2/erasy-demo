@@ -92,6 +92,8 @@ export default function ScanPage() {
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [score, setScore] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // 발견 계정 확인 처리 중 — 중복 POST 방지.
+  const [acking, setAcking] = useState(false);
 
   // 정리 큐에 담긴 계정 — **서버 정본**(/api/cleanup/requests). 이전에는 로컬 state만 바꿔서
   //   새로고침하면 담은 사실이 사라졌고, 회복 투영(미완료 정리 요청 기준)은 아무것도 받지 못했다.
@@ -153,6 +155,42 @@ export default function ScanPage() {
     }
   }
 
+  /**
+   * 발견 계정 확인 — S축 "미인지" 인자를 해소한다.
+   *
+   * 여기에 두는 이유: 예전에는 이 버튼이 메일 스캔 결과 패널 안에만 있어서, 소셜
+   * 연결목록으로 모은 계정은 확인할 길이 자체가 없었다. 목록을 보는 화면이 곧 확인하는
+   * 화면이어야 한다 — 확인 API가 "사용자가 목록을 본 시점이 곧 인지 시점"을 전제한다.
+   */
+  async function acknowledgeFound() {
+    if (acking) return;
+    setAcking(true);
+    try {
+      const res = await fetch('/api/accounts/acknowledge', { method: 'POST' });
+      const body = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        data?: { acknowledged: number };
+      };
+      if (!res.ok || body.ok === false) {
+        setToast(body.error ?? '확인 처리에 실패했습니다.');
+        return;
+      }
+      await loadAccounts();
+      const next = await refreshScore();
+      const n = body.data?.acknowledged ?? 0;
+      setToast(
+        next !== null
+          ? `${n}곳을 확인했습니다 · 안전도 재계산 ${next}점`
+          : `${n}곳을 확인했습니다`,
+      );
+    } catch {
+      setToast('네트워크 오류로 확인하지 못했습니다.');
+    } finally {
+      setAcking(false);
+    }
+  }
+
   useEffect(() => {
     void (async () => {
       await loadAccounts();
@@ -181,6 +219,13 @@ export default function ScanPage() {
       sampleCount: accounts.length - real.length,
     };
   }, [accounts]);
+
+  // 아직 확인하지 않은 발견 계정. 점수 엔진의 S축 "미인지" 인자와 같은 모수다
+  //   (discovered ∧ ¬acknowledged). 이 목록 화면이 그 수를 직접 세고 직접 해소한다.
+  const unackedCount = useMemo(
+    () => accounts.filter((a) => a.discovered && !a.acknowledged).length,
+    [accounts],
+  );
 
   // 필터 → 위험도 정렬(DTO risk 필드 사용, 하드코딩 금지). 동률은 미사용 오래된 순.
   const rows = useMemo(
@@ -394,6 +439,27 @@ export default function ScanPage() {
         </div>
       )}
 
+      {/* 확인 = S축 "미인지" 인자 해제. 메일 스캔을 하지 않아도 여기서 늘 확인할 수 있다.
+          점수가 왜 오르는지, 무엇이 안 사라지는지를 함께 적어야 게이밍처럼 보이지 않는다. */}
+      {loadState === 'ready' && unackedCount > 0 && (
+        <div className="ack-box">
+          <p className="advice">
+            아직 확인하지 않은 계정이 <strong>{unackedCount}곳</strong> 있습니다. 아래 목록을
+            보셨으면 눌러 주세요. <strong>&ldquo;모르는 계정이 있다&rdquo;는 위험이 사라져 안전도가
+            오릅니다.</strong> 계정 자체의 위험(오래 방치·유출·비밀번호 습관)은 그대로 남아
+            있고, 그건 정리해야 없어집니다.
+          </p>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => void acknowledgeFound()}
+            disabled={acking}
+          >
+            {acking ? '확인 처리 중…' : `${unackedCount}곳 확인했어요`}
+          </button>
+        </div>
+      )}
+
       <div className="stat-grid cols3">
         <div className="stat">
           <div className="lbl">연결 계정</div>
@@ -576,6 +642,8 @@ export default function ScanPage() {
       {/* 메일함 스캔(T5.6) — 같은 표의 2단계. 민감 scope라 "확인되지 않은 앱" 경고를 지나야 한다. */}
       <div id="gmail-scan">
         <GmailScan
+          // 확인 버튼은 이 페이지 위쪽 상시 버튼 하나로 통일한다(같은 화면에 둘이면 안 된다).
+          showAcknowledge={false}
           onApplied={() => {
             // 스캔 결과가 인벤토리·점수에 반영될 수 있으므로 둘 다 다시 읽는다.
             void loadAccounts();

@@ -46,6 +46,14 @@ export type AccountDTO = {
   twoFactorEnabled?: boolean;
   passwordReused?: boolean;
   discovered?: boolean;
+  /**
+   * 그 발견을 사용자가 확인했는가(acknowledgedAt != null).
+   *
+   * 목록 화면이 "아직 확인하지 않은 것이 몇 건인지"를 스스로 셀 수 있어야 한다. 예전에는
+   * 확인 경로가 메일 스캔 결과 패널 안에만 있어서, 소셜 연결목록으로 모은 계정은 확인할
+   * 길이 없었다(2026-08-27 실측: 무대 계정 미확인 209건이 그 상태로 남아 있었다).
+   */
+  acknowledged?: boolean;
 };
 
 // 마지막 사용 시기 자가신고 버킷 → lastUsedAt 파생(정밀 일자 대신 구간 입력).
