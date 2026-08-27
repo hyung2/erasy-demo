@@ -61,6 +61,7 @@ const TIERS: Record<string, Tier> = {
   'verify-display-name': 'static',
   'verify-rescan-schedule': 'static',
   'verify-lever-coverage': 'static',
+  'verify-ext-autodetect': 'static',
 
   'verify-account-deletion': 'db',
   'verify-acknowledge': 'db',

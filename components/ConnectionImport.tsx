@@ -15,6 +15,8 @@ import {
   collectViaExtension,
   detectExtension,
   EXTENSION_STORE_URL,
+  onExtensionReady,
+  probeLoginState,
 } from '@/lib/extension-bridge';
 
 const PROVIDERS: Array<{ id: ImportProvider; label: string; href: string; hint: string }> = [
@@ -43,6 +45,27 @@ type MissingConnection = { accountId: string; name: string };
 
 /** 찾자마자 펼쳐 두는 항목 수. 숫자만 보고 누르지 않도록 실제 이름을 먼저 보여준다. */
 const PREVIEW_COUNT = 7;
+
+/**
+ * 확장을 얹기 위해 이 화면을 한 번 다시 읽었는가.
+ *
+ * 세션에 한 번만 한다. 설치하지 않고 웹스토어를 닫고 온 사람에게 돌아올 때마다 화면이
+ * 새로 뜨면, 고치려던 것보다 나쁜 경험이 된다.
+ */
+const RELOAD_ONCE_KEY = 'erasy.ext.reloadTried';
+
+/** 자동 감지가 몇 번 빗나가면 수동 확인 버튼을 꺼내는가. */
+const MANUAL_AFTER_MISSES = 2;
+
+/**
+ * 화면이 지금 요구하는 단 하나의 행동.
+ *
+ * 이 값을 따로 두는 이유: 예전에는 "설치 안내"·"로그인 안내"·"가져오기"가 각자의 조건으로
+ * 켜지고 꺼져서, 로그인이 필요할 때는 버튼이 둘(로그인하러 가기 · 다시 가져오기)로 갈렸다.
+ * 사용자가 화면에서 읽어야 하는 것은 "지금 뭘 눌러야 하나" 하나뿐이고, 나머지는 우리가
+ * 알아서 감지해야 한다.
+ */
+type Stage = 'checking' | 'install' | 'login' | 'collect';
 
 type ImportResult = {
   provider: ImportProvider;
@@ -105,6 +128,10 @@ export default function ConnectionImport({
   const [collecting, setCollecting] = useState(false);
   /** 해당 제공사에 로그인이 안 돼 있는 상태. 실패와 구분해 갈 곳을 알려 준다. */
   const [needsLogin, setNeedsLogin] = useState<{ loginUrl: string | null } | null>(null);
+  /** 웹스토어를 열어 본 사람인가 — 열지도 않은 사람의 화면을 마음대로 다시 읽지 않는다. */
+  const [storeOpened, setStoreOpened] = useState(false);
+  /** 자동 감지가 빗나간 횟수. 쌓이면 수동 확인 버튼을 꺼내 준다 — 자동화가 막다른 길이 되면 안 된다. */
+  const [autoMisses, setAutoMisses] = useState(0);
 
   const parsed = useMemo(() => (text.trim() ? parseConnectionList(text) : null), [text]);
 
@@ -145,6 +172,16 @@ export default function ConnectionImport({
     }
   }, []);
 
+  /** 확장이 이 제공사를 지원하는가 — 주 동작과 예비 수단의 위계가 여기서 갈린다. */
+  const canAutoCollect = extProviders.includes(provider);
+  const stage: Stage = !extChecked
+    ? 'checking'
+    : !canAutoCollect
+      ? 'install'
+      : needsLogin
+        ? 'login'
+        : 'collect';
+
   // 확장이 자동으로 가져올 수 있는 제공사 목록. 확장이 없으면 빈 배열이고, 그때는
   //   같은 자리에 설치 안내가 선다.
   useEffect(() => {
@@ -160,44 +197,152 @@ export default function ConnectionImport({
   }, []);
 
   /**
-   * 설치하고 돌아온 사람이 다시 확인하는 버튼.
+   * 확장이 "나 여기 있다"고 알릴 때마다 받는다 — 처음 탐지 창이 닫힌 뒤에 오는 신호까지.
    *
-   * "새로고침하세요"로 떠넘기지 않는 이유: 이 화면은 온보딩 한복판이고, 새로고침하면
-   * 지금까지 밟은 단계가 어디로 갔는지 사용자가 확신하지 못한다. 확인만 다시 하면 된다.
+   * 확장 0.2.0은 설치되는 순간 열려 있는 이레이지 탭을 스스로 다시 읽는다. 그 뒤 브리지가
+   * 얹히면서 ready가 오는데, 듣는 귀가 없으면 그 신호가 그대로 버려진다.
+   */
+  useEffect(
+    () =>
+      onExtensionReady((v) => {
+        setExtProviders(v);
+        setExtChecked(true);
+      }),
+    [],
+  );
+
+  /**
+   * 확장으로 한 번에 가져오기.
+   * 확장이 백그라운드 탭에서 연결목록 페이지를 열어 **서비스 이름만** 읽고 닫는다.
+   * 결과는 붙여넣기와 똑같이 미리보기를 거친다 — 자동으로 왔다고 확인 없이 저장하지 않는다.
+   *
+   * silent: 자동 재시도에서 쓴다. 사용자가 누르지 않은 시도가 실패했다고 붉은 오류를
+   * 띄우면, 가만히 있었는데 뭔가 잘못됐다는 인상만 남는다.
+   */
+  const collectWithExtension = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      setCollecting(true);
+      if (!opts?.silent) setError(null);
+      setResult(null);
+      try {
+        const res = await collectViaExtension(provider);
+        if (!res.ok) {
+          // 로그인이 필요한 경우는 "실패"가 아니라 "아직 못 한 일"이다. 문구도 갈 곳도 다르다.
+          if (res.needsLogin) setNeedsLogin({ loginUrl: res.loginUrl ?? null });
+          else if (!opts?.silent) setError(res.error);
+          return;
+        }
+        setNeedsLogin(null);
+        setText(res.names.join('\n'));
+        setAwaitingReturn(false);
+      } finally {
+        setCollecting(false);
+      }
+    },
+    [provider],
+  );
+
+  /**
+   * 설치를 기다리는 동안 — 사용자가 이 탭으로 돌아오면 그때 확인한다.
+   *
+   * 여기서 "다시 확인"만으로 끝낼 수 없는 이유: 크롬은 **이미 열려 있는 탭에 content script를
+   * 나중에 주입하지 않는다.** 설치 직후 이 탭에는 브리지가 없어서, 몇 번을 물어도 답할 상대가
+   * 없다(예전 "설치했어요 · 다시 확인" 버튼이 원리상 성공할 수 없었던 이유다).
+   * 확장 0.2.0은 설치되는 순간 스스로 이 탭을 다시 읽어 주지만, 스토어에 올라간 구버전은
+   * 그러지 못한다. 그때는 앱이 화면을 한 번 다시 읽는다 — 사용자가 배워야 할 일이 아니다.
+   */
+  useEffect(() => {
+    if (stage !== 'install' || !storeOpened) return;
+    let alive = true;
+    const check = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const v = await detectExtension(1500);
+      if (!alive) return;
+      if (v.length > 0) {
+        setExtProviders(v);
+        setExtChecked(true);
+        return;
+      }
+      setAutoMisses((n) => n + 1);
+      if (sessionStorage.getItem(RELOAD_ONCE_KEY)) return;
+      sessionStorage.setItem(RELOAD_ONCE_KEY, '1');
+      window.location.reload();
+    };
+    const onVisible = () => void check();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [stage, storeOpened]);
+
+  /**
+   * 로그인을 기다리는 동안 — 다른 탭에서 로그인하면 이 화면이 스스로 바뀐다.
+   *
+   * 확장 0.2.0에는 탭을 열지 않는 값싼 조회(login-state)가 있어 2초마다 물어봐도 된다.
+   * 구버전 확장은 그 규약을 모르므로, 사용자가 이 탭으로 돌아온 시점에 조용히 한 번 더
+   * 가져와 본다 — 로그인 전이면 확장이 로그인 화면을 즉시 알아채고 끝내므로 조용히 실패한다.
+   * 무한히 되풀이하지 않도록 세 번으로 끊는다.
+   */
+  useEffect(() => {
+    if (stage !== 'login') return;
+    let alive = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let silentTries = 0;
+    let lastSilentAt = 0;
+
+    const stopPolling = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+
+    const probe = async () => {
+      if (!alive || document.visibilityState !== 'visible') return;
+      const r = await probeLoginState(provider);
+      if (!alive) return;
+      if (r.supported) {
+        if (r.loggedIn === true) setNeedsLogin(null);
+        return;
+      }
+      // 구버전 확장 — 물을 길이 없으니 되풀이 조회는 낭비다. 돌아온 시점에만 시도한다.
+      stopPolling();
+      if (silentTries >= 3 || Date.now() - lastSilentAt < 4000) return;
+      silentTries += 1;
+      lastSilentAt = Date.now();
+      setAutoMisses((n) => n + 1);
+      await collectWithExtension({ silent: true });
+    };
+
+    const onVisible = () => void probe();
+    document.addEventListener('visibilitychange', onVisible);
+    void probe();
+    timer = setInterval(() => void probe(), 2000);
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', onVisible);
+      stopPolling();
+    };
+  }, [stage, provider, collectWithExtension]);
+
+  /**
+   * 자동 감지가 끝내 빗나갔을 때 꺼내는 수동 확인.
+   *
+   * 확인해서 없으면 화면을 다시 읽는다 — 이 탭에 브리지가 없는 상태에서는 그것 말고는
+   * 확장을 얹을 방법이 없기 때문이다. "새로고침하세요"라고 시키는 대신 우리가 한다.
    */
   const [rechecking, setRechecking] = useState(false);
   async function recheckExtension() {
     if (rechecking) return;
     setRechecking(true);
     const v = await detectExtension(1500);
-    setExtProviders(v);
-    setExtChecked(true);
-    setRechecking(false);
-  }
-
-  /**
-   * 확장으로 한 번에 가져오기.
-   * 확장이 백그라운드 탭에서 연결목록 페이지를 열어 **서비스 이름만** 읽고 닫는다.
-   * 결과는 붙여넣기와 똑같이 미리보기를 거친다 — 자동으로 왔다고 확인 없이 저장하지 않는다.
-   */
-  async function collectWithExtension() {
-    setCollecting(true);
-    setError(null);
-    setResult(null);
-    try {
-      const res = await collectViaExtension(provider);
-      if (!res.ok) {
-        // 로그인이 필요한 경우는 "실패"가 아니라 "아직 못 한 일"이다. 문구도 갈 곳도 다르다.
-        if (res.needsLogin) setNeedsLogin({ loginUrl: res.loginUrl ?? null });
-        else setError(res.error);
-        return;
-      }
-      setNeedsLogin(null);
-      setText(res.names.join('\n'));
-      setAwaitingReturn(false);
-    } finally {
-      setCollecting(false);
+    if (v.length > 0) {
+      setExtProviders(v);
+      setExtChecked(true);
+      setRechecking(false);
+      return;
     }
+    sessionStorage.setItem(RELOAD_ONCE_KEY, '1');
+    window.location.reload();
   }
 
   /** 연결 목록 창을 새로 띄우고, 돌아오는 시점을 잡아 안내를 올린다. */
@@ -315,8 +460,8 @@ export default function ConnectionImport({
   }
 
   const current = PROVIDERS.find((p) => p.id === provider)!;
-  /** 확장이 이 제공사를 지원하는가 — 주 동작과 예비 수단의 위계가 여기서 갈린다. */
-  const canAutoCollect = extProviders.includes(provider);
+  /** 아직 미리보기·결과가 뜨기 전 — 이 구간에서만 "지금 할 행동 하나"를 보여준다. */
+  const inActionPhase = !parsed && !result;
 
   return (
     <section className="panel" aria-labelledby="conn-import-title">
@@ -354,43 +499,49 @@ export default function ConnectionImport({
         </div>
       )}
 
-      {/* 로그인이 안 돼 있으면 그 사실과 갈 곳을 먼저 보여준다. 이건 실패가 아니라
-          아직 못 한 일이라, 붉은 오류가 아니라 안내로 다룬다. */}
-      {!parsed && !result && needsLogin && (
+      {/* 로그인이 안 돼 있을 때. 이건 실패가 아니라 아직 못 한 일이라 붉은 오류로 다루지 않는다.
+          버튼은 **로그인하러 가는 것 하나**뿐이다 — 로그인하고 돌아오는 일은 우리가 감지한다.
+          예전에는 여기에 "로그인했어요 · 다시 가져오기"가 나란히 서서, 돌아온 사용자가
+          둘 중 무엇을 눌러야 하는지 한 번 더 생각해야 했다. */}
+      {inActionPhase && stage === 'login' && (
         <div className="needs-login">
           <p className="needs-login-title">{current.label}에 로그인이 필요해요</p>
           <p className="needs-login-note">
             연결목록은 <strong>{current.label} 계정에 로그인된 상태</strong>에서만 읽을 수
-            있습니다. 새 탭에서 로그인하신 뒤 다시 눌러 주세요. 아이디·비밀번호는 이레이지가
-            보지 않습니다.
+            있습니다. 아이디·비밀번호는 이레이지가 보지 않습니다.
           </p>
           <div className="needs-login-actions">
-            {needsLogin.loginUrl && (
-              <a
-                className="btn btn-primary"
-                href={needsLogin.loginUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {current.label} 로그인하러 가기 ↗
-              </a>
-            )}
+            <a
+              className="btn btn-primary ext-collect-cta"
+              href={needsLogin?.loginUrl ?? current.href}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {current.label} 로그인하러 가기 ↗<span className="sr-only">(새 탭에서 열림)</span>
+            </a>
+          </div>
+          <p className="ext-collect-note" role="status">
+            {collecting
+              ? '로그인을 확인하는 중이에요…'
+              : '로그인하시면 이 화면이 스스로 바뀝니다. 새로고침하지 않으셔도 됩니다.'}
+          </p>
+          {autoMisses >= MANUAL_AFTER_MISSES && (
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn-sm"
               onClick={() => void collectWithExtension()}
               disabled={collecting}
             >
-              {collecting ? '확인 중…' : '로그인했어요 · 다시 가져오기'}
+              {collecting ? '확인 중…' : '로그인했어요 · 지금 확인'}
             </button>
-          </div>
+          )}
         </div>
       )}
 
       {/* 원터치 — 확장이 이 제공사를 지원할 때의 **주 동작**. 화면에서 가장 크다.
           담고 나면(result) 사라진다. 남겨 두면 "또 눌러야 하나"를 한 번 더 생각하게 되고,
           정작 눌러야 할 다음 버튼과 경쟁한다. */}
-      {!parsed && !result && canAutoCollect && !needsLogin && (
+      {inActionPhase && stage === 'collect' && (
         <div className="ext-collect">
           <button
             type="button"
@@ -409,13 +560,14 @@ export default function ConnectionImport({
 
       {/* 확장이 없을 때 — 같은 자리에 설치로 가는 문을 낸다. 숨기면 이 제품의 주 경로가
           있다는 것조차 알 수 없다. 아래 붙여넣기 경로는 그대로 열려 있으므로 설치는 강요가 아니다. */}
-      {!parsed && !result && extChecked && !canAutoCollect && !needsLogin && (
+      {inActionPhase && stage === 'install' && (
         <div className="ext-collect">
           <a
             className="btn btn-primary ext-collect-cta"
             href={EXTENSION_STORE_URL}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => setStoreOpened(true)}
           >
             확장 설치하고 한 번에 가져오기 ↗<span className="sr-only">(새 탭에서 열림)</span>
           </a>
@@ -424,22 +576,31 @@ export default function ConnectionImport({
             읽지 않고, 브라우저가 이미 로그인해 둔 화면에서 <strong>서비스 이름만</strong> 읽습니다.
             설치 없이 아래에서 목록을 붙여넣으셔도 됩니다.
           </p>
-          <button
-            type="button"
-            className="btn-sm"
-            onClick={() => void recheckExtension()}
-            disabled={rechecking}
-          >
-            {rechecking ? '확인 중…' : '설치했어요 · 다시 확인'}
-          </button>
+          {storeOpened && (
+            <p className="ext-collect-note" role="status">
+              설치가 끝나면 이 화면이 스스로 바뀝니다. 새로고침하지 않으셔도 됩니다.
+            </p>
+          )}
+          {/* 자동 감지가 빗나갔을 때만 꺼낸다. 자동화가 막다른 길이 되면 안 되기 때문이고,
+              처음부터 보여 주면 "결국 내가 눌러야 하는구나"로 읽힌다. */}
+          {autoMisses >= MANUAL_AFTER_MISSES && (
+            <button
+              type="button"
+              className="btn-sm"
+              onClick={() => void recheckExtension()}
+              disabled={rechecking}
+            >
+              {rechecking ? '확인 중…' : '설치했어요 · 지금 확인'}
+            </button>
+          )}
         </div>
       )}
 
       {/* 수동 경로. 확장이 있으면 접어 두고 "안 될 때"라고 못박는다 — 예비 수단이 주 동작과
           같은 크기로 나란히 있으면 무엇을 먼저 눌러야 하는지가 사라진다. */}
-      {!parsed &&
-        !result &&
-        (canAutoCollect ? (
+      {inActionPhase &&
+        stage !== 'checking' &&
+        (stage !== 'install' ? (
           <details className="fallback-section">
             <summary>자동으로 가져오지 못했다면</summary>
             <div className="fallback-body">

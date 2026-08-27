@@ -37,6 +37,25 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  // 로그인 여부만 묻는다 — 탭을 열지 않는 값싼 조회라 앱이 짧은 주기로 반복해도 된다.
+  // 앱은 이 답으로 "로그인하러 가기"를 "한 번에 가져오기"로 바꾼다.
+  if (data.type === 'login-state') {
+    chrome.runtime.sendMessage({ type: 'erasy:loginState', provider: data.provider }, (res) => {
+      const err = chrome.runtime.lastError;
+      window.postMessage(
+        {
+          source: EXT,
+          type: 'login-state',
+          requestId: data.requestId ?? null,
+          ok: !err && !!res?.ok,
+          loggedIn: err ? null : (res?.loggedIn ?? null),
+        },
+        window.location.origin,
+      );
+    });
+    return;
+  }
+
   if (data.type === 'collect') {
     chrome.runtime.sendMessage({ type: 'erasy:collect', provider: data.provider }, (res) => {
       const err = chrome.runtime.lastError;

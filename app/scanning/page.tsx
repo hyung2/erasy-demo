@@ -11,7 +11,7 @@
 //
 // 그래서 제공사별로 단계를 나눈다. 한 화면에 할 일 하나, 끝나면 다음. 각 단계는 건너뛸 수
 // 있고, 마지막에 종합 목록으로 간다. 무엇을 했고 무엇을 건너뛰었는지가 진행 표시에 남는다.
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import GmailScan from '@/components/GmailScan';
 import ConnectionImport from '@/components/ConnectionImport';
@@ -58,6 +58,9 @@ const STEPS: {
   },
 ];
 
+/** 온보딩 진행 상태를 담아 두는 세션 키. 탭을 닫으면 사라진다. */
+const ONBOARD_STATE_KEY = 'erasy.onboard.state';
+
 function ScanningInner() {
   const router = useRouter();
   const params = useSearchParams();
@@ -72,12 +75,58 @@ function ScanningInner() {
   /** 각 단계에서 실제로 뭔가 담았는지. 건너뛴 것과 구분해 마지막 화면이 사실대로 말한다. */
   const [applied, setApplied] = useState<Record<string, boolean>>({});
 
+  /**
+   * 진행 상태를 세션에 남긴다.
+   *
+   * 왜: 확장을 설치하면 이 화면이 스스로 한 번 다시 읽힌다(크롬이 이미 열린 탭에는
+   * content script를 나중에 넣어 주지 않아서, 그것 말고는 확장을 얹을 방법이 없다).
+   * 그때 밟아 온 단계가 1번으로 돌아가면, 고치려던 것보다 나쁜 경험이 된다.
+   * 실수로 새로고침한 경우에도 같은 이유로 진행이 남는 편이 낫다.
+   *
+   * 복원을 useState 초기값이 아니라 마운트 effect에서 하는 이유: 서버에는 sessionStorage가
+   * 없다. 초기값에서 읽으면 서버는 1단계, 브라우저는 3단계를 그려 하이드레이션이 어긋난다.
+   * 저장소에서 한 번 끌어오는 동기화라 아래 규칙의 취지(연쇄 렌더 방지)와 어긋나지 않는다.
+   */
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(ONBOARD_STATE_KEY);
+      if (!saved) return;
+      const v = JSON.parse(saved) as { index?: number; applied?: Record<string, boolean> };
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (typeof v.index === 'number' && v.index >= 0 && v.index < STEPS.length) setIndex(v.index);
+      if (v.applied && typeof v.applied === 'object') setApplied(v.applied);
+    } catch {
+      // 남은 값이 깨졌으면 처음부터 하면 된다. 여기서 화면이 죽을 이유는 없다.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(ONBOARD_STATE_KEY, JSON.stringify({ index, applied }));
+    } catch {
+      /* 저장이 막힌 브라우저에서도 온보딩 자체는 그대로 돌아간다 */
+    }
+  }, [index, applied]);
+
   const step = STEPS[index];
   const isLast = index === STEPS.length - 1;
   const doneCount = useMemo(() => Object.values(applied).filter(Boolean).length, [applied]);
 
+  /**
+   * 온보딩을 떠난다. 남겨 둔 진행 상태를 지우고 나간다 — 안 지우면 나중에 계정 목록에서
+   * 다시 들어왔을 때 마지막 단계에서 시작하게 된다.
+   */
+  function leave() {
+    try {
+      sessionStorage.removeItem(ONBOARD_STATE_KEY);
+    } catch {
+      /* 못 지워도 나가는 것 자체는 막지 않는다 */
+    }
+    router.replace(returnTo);
+  }
+
   function goNext() {
-    if (isLast) router.replace(returnTo);
+    if (isLast) leave();
     else setIndex((i) => i + 1);
   }
 
@@ -152,7 +201,7 @@ function ScanningInner() {
             <button
               type="button"
               className="linklike"
-              onClick={() => router.replace(returnTo)}
+              onClick={leave}
             >
               나중에 하고 점수 보기
             </button>

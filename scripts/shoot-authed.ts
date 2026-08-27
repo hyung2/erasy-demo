@@ -294,6 +294,34 @@ async function main() {
         await new Promise((r) => setTimeout(r, 600));
       }
 
+      // SHOT_WAIT: 클릭 뒤 화면이 자리 잡을 때까지 더 기다린다. 확장이 백그라운드 탭에서
+      //   목록을 읽어 오는 경로처럼 몇 초가 걸리는 동작은 600ms로는 못 본다.
+      if (process.env.SHOT_WAIT) {
+        await new Promise((r) => setTimeout(r, Number(process.env.SHOT_WAIT)));
+      }
+
+      // SHOT_EVAL: 페이지 안에서 식을 하나 돌려 결과를 찍는다(프라미스면 기다린다).
+      //   스크린샷은 "무엇이 보이는가"까지만 답한다. 확장과의 메시지 왕복처럼 화면에
+      //   드러나지 않는 배선은 이렇게 직접 물어봐야 확인된다.
+      if (process.env.SHOT_EVAL) {
+        const ev = (await browser.send(
+          'Runtime.evaluate',
+          {
+            expression: process.env.SHOT_EVAL,
+            returnByValue: true,
+            awaitPromise: true,
+            // 새 탭 열기 같은 동작은 사용자 제스처 없이는 막힌다. 검증이 실제 사용 경로를
+            //   그대로 밟게 하려면 여기서 제스처로 쳐 줘야 한다.
+            userGesture: true,
+          },
+          sessionId,
+        )) as { result?: { value?: unknown }; exceptionDetails?: { text?: string } };
+        console.log(
+          'EVAL:',
+          ev.exceptionDetails ? `예외 ${ev.exceptionDetails.text}` : JSON.stringify(ev.result?.value),
+        );
+      }
+
       // SHOT_PROBE에 선택자를 주면 박스와 여백을 재서 찍는다. 스크린샷만으로는 "빈 공간이
       // 넓다"까지만 알 수 있고, 어느 규칙이 그 공간을 만들었는지는 재야 나온다.
       if (process.env.SHOT_PROBE) {

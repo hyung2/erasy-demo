@@ -73,6 +73,75 @@ const PROVIDERS = {
   },
 };
 
+/**
+ * 이레이지 앱이 열려 있는 탭 — 설치 직후 여기를 다시 읽게 한다.
+ *
+ * 왜: 크롬은 **이미 열려 있는 탭에 content script를 나중에 주입하지 않는다.** 그래서
+ * 설치를 마치고 앱으로 돌아와도 그 탭에는 브리지가 없고, 앱은 확장이 없는 것으로 본다.
+ * 사용자에게는 "설치했는데 아무 일도 안 일어나는" 화면이다. 확장이 스스로 그 탭을 한 번
+ * 새로 읽어 주면 그때부터 원터치 경로가 열린다 — 사용자가 새로고침을 배울 이유가 없다.
+ */
+const APP_TAB_MATCHES = ['https://service-app-seven-virid.vercel.app/*', 'http://localhost/*'];
+
+chrome.runtime.onInstalled.addListener((details) => {
+  // 'update'는 제외한다. 크롬이 알아서 올리는 자동 업데이트까지 새로고침하면 사용자가
+  // 쓰고 있던 화면을 예고 없이 날린다.
+  if (details?.reason !== 'install') return;
+  chrome.tabs.query({ url: APP_TAB_MATCHES }, (tabs) => {
+    if (chrome.runtime.lastError) return;
+    for (const t of tabs ?? []) {
+      if (t.id != null) chrome.tabs.reload(t.id);
+    }
+  });
+});
+
+/**
+ * 3사 로그인 여부 — 값싼 조회용 메모리 캐시. null은 "아직 모른다"다.
+ *
+ * 이걸 두는 이유: 로그인이 필요하다고 알린 뒤, 사용자가 다른 탭에서 로그인하고 돌아왔을 때
+ * 화면이 스스로 바뀌어야 한다. 확인하겠다고 매번 백그라운드 탭을 여는 것은 값이 비싸고,
+ * 사용자 브라우저를 우리가 마음대로 쓰는 일이다.
+ *
+ * 무엇을 보는가: 탭 주소가 아래 세 제공사 패턴에 맞는지만 본다. 맞지 않는 주소는 그대로
+ * 버리고, 남기는 것은 제공사별 참/거짓 세 개뿐이다. 방문 기록을 모으지 않고 저장하지도
+ * 않는다(서비스 워커가 잠들면 사라진다).
+ */
+const loginState = { google: null, kakao: null, naver: null };
+
+/** 그 제공사에 로그인돼 있어야만 열리는 주소들. 여기 있으면 로그인된 것으로 본다. */
+const SIGNED_IN_DOMAINS = {
+  google: /^https:\/\/myaccount\.google\.com\//i,
+  kakao: /^https:\/\/(apps|accounts)\.kakao\.com\//i,
+  naver: /^https:\/\/nid\.naver\.com\//i,
+};
+
+/** 로그인 화면. 위 도메인보다 **먼저** 본다 — 카카오·네이버는 같은 도메인에 로그인 화면이 있다. */
+const SIGN_IN_PAGES = {
+  google: /^https:\/\/accounts\.google\.com\/(signin|ServiceLogin|v3\/signin)/i,
+  kakao: /^https:\/\/accounts\.kakao\.com\/login/i,
+  naver: /^https:\/\/nid\.naver\.com\/(nidlogin|user2\/V2Login)/i,
+};
+
+function noteTabUrl(url) {
+  if (typeof url !== 'string' || !url.startsWith('https://')) return;
+  for (const key of Object.keys(SIGN_IN_PAGES)) {
+    if (SIGN_IN_PAGES[key].test(url)) {
+      loginState[key] = false;
+      return;
+    }
+  }
+  for (const key of Object.keys(SIGNED_IN_DOMAINS)) {
+    if (SIGNED_IN_DOMAINS[key].test(url)) {
+      loginState[key] = true;
+      return;
+    }
+  }
+}
+
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+  if (changeInfo.url) noteTabUrl(changeInfo.url);
+});
+
 /** 셀렉터와 대상 주소가 모두 확인된 제공사만 앱에 알린다. 둘 중 하나라도 없으면 열지 않는다. */
 function supportedProviders() {
   return Object.entries(PROVIDERS)
@@ -203,6 +272,8 @@ async function collect(providerKey) {
   const names = Array.from(new Set(all));
 
   if (needsLogin) {
+    // 실측이 추측을 이긴다 — 방금 열어 보고 로그인 화면으로 튕겼으니 확실하다.
+    loginState[providerKey] = false;
     return {
       ok: false,
       needsLogin: true,
@@ -218,6 +289,7 @@ async function collect(providerKey) {
       error: `${provider.label} 연결목록을 읽지 못했습니다. 로그인되어 있는지 확인한 뒤 다시 시도해 주세요.`,
     };
   }
+  loginState[providerKey] = true;
   return {
     ok: true,
     provider: providerKey,
@@ -230,6 +302,11 @@ async function collect(providerKey) {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'erasy:providers') {
     sendResponse({ ok: true, providers: supportedProviders() });
+    return false;
+  }
+  if (msg?.type === 'erasy:loginState') {
+    const key = msg.provider ?? 'google';
+    sendResponse({ ok: true, provider: key, loggedIn: loginState[key] ?? null });
     return false;
   }
   if (msg?.type === 'erasy:collect') {

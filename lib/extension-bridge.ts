@@ -22,6 +22,13 @@ type ExtMessage =
       error?: string;
       needsLogin?: boolean;
       loginUrl?: string | null;
+    }
+  | {
+      source: typeof EXT;
+      type: 'login-state';
+      requestId: string | null;
+      ok: boolean;
+      loggedIn?: boolean | null;
     };
 
 function isExtMessage(v: unknown): v is ExtMessage {
@@ -65,6 +72,61 @@ export function detectExtension(timeoutMs = 800): Promise<string[]> {
     window.addEventListener('message', onMessage);
     window.postMessage({ source: APP, type: 'ping' }, window.location.origin);
     setTimeout(() => finish([]), timeoutMs);
+  });
+}
+
+/**
+ * 확장이 "나 여기 있다"고 알릴 때마다 받는다 — 탐지 창(detectExtension의 짧은 대기)이
+ * 닫힌 뒤에 오는 신호까지 잡는다.
+ *
+ * 왜 필요한가: 크롬은 **이미 열려 있는 탭에 content script를 나중에 주입하지 않는다.**
+ * 그래서 설치 직후 이 탭에는 브리지가 없고, 앱이 아무리 ping을 던져도 답할 상대가 없다.
+ * 확장(0.2.0+)이 설치 시 앱 탭을 스스로 새로 읽어 브리지를 얹고 ready를 보내는데,
+ * 그 신호를 받으려면 듣는 귀가 계속 열려 있어야 한다.
+ */
+export function onExtensionReady(cb: (providers: string[]) => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  function onMessage(e: MessageEvent) {
+    if (e.source !== window || !isExtMessage(e.data)) return;
+    if (e.data.type === 'ready') cb(e.data.providers ?? []);
+  }
+  window.addEventListener('message', onMessage);
+  return () => window.removeEventListener('message', onMessage);
+}
+
+/** 로그인 상태 조회 결과. supported=false는 **구버전 확장**(이 규약을 모름)이라는 뜻이다. */
+export type LoginProbe = { supported: boolean; loggedIn: boolean | null };
+
+/**
+ * 해당 제공사에 지금 로그인돼 있는지 확장에 물어본다.
+ *
+ * 수집(collectViaExtension)과 달리 **탭을 열지 않는다.** 확장이 3사 도메인 탭을 지나가며
+ * 봐 둔 것을 메모리에서 답할 뿐이라 몇 밀리초면 끝나고, 그래서 짧은 주기로 반복해도 된다.
+ * 로그인 확인하겠다고 매번 백그라운드 탭을 여는 것은 사용자 브라우저를 우리가 마음대로
+ * 쓰는 일이다 — 물어보는 값에 비해 대가가 크다.
+ */
+export function probeLoginState(provider: string, timeoutMs = 1200): Promise<LoginProbe> {
+  if (typeof window === 'undefined') return Promise.resolve({ supported: false, loggedIn: null });
+  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v: LoginProbe) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('message', onMessage);
+      resolve(v);
+    };
+    function onMessage(e: MessageEvent) {
+      if (e.source !== window || !isExtMessage(e.data)) return;
+      if (e.data.type !== 'login-state') return;
+      if (e.data.requestId && e.data.requestId !== requestId) return;
+      finish({ supported: e.data.ok, loggedIn: e.data.loggedIn ?? null });
+    }
+    window.addEventListener('message', onMessage);
+    window.postMessage({ source: APP, type: 'login-state', requestId, provider }, window.location.origin);
+    // 답이 없으면 "모른다"이지 "로그아웃"이 아니다. 구버전 확장을 로그아웃으로 읽으면
+    // 로그인해 둔 사람에게 로그인하라고 시키게 된다.
+    setTimeout(() => finish({ supported: false, loggedIn: null }), timeoutMs);
   });
 }
 
