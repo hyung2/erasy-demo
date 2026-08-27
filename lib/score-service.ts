@@ -74,7 +74,7 @@ export type ScoreServiceResult = {
 type DbAccountRow = Awaited<ReturnType<typeof queryAccounts>>[number];
 
 // 신호 집계 쿼리 — 필요한 신호만(유출 미해결·최근 90일 이상접속·완료된 정리·접속기록 보유수).
-function queryAccounts(userId: string) {
+export function queryAccounts(userId: string) {
   const suspiciousCutoff = new Date(Date.now() - SUSPICIOUS_WINDOW_DAYS * DAY);
   return prisma.account.findMany({
     where: { userId },
@@ -109,7 +109,7 @@ function hasPendingRemoval(r: DbAccountRow): boolean {
   );
 }
 
-function toRowV2(r: DbAccountRow): ScoreRowV2 {
+export function toRowV2(r: DbAccountRow): ScoreRowV2 {
   const done = new Set(
     r.cleanupRequests.filter((c) => c.status === 'done').map((c) => c.actionType),
   );
