@@ -11,7 +11,11 @@
 // 넣되 표시하고, 빼는 판단은 사용자가 편한 자리에서 하게 한다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseConnectionList, type ImportProvider, type ParsedConnection } from '@/lib/connection-import';
-import { collectViaExtension, detectExtension } from '@/lib/extension-bridge';
+import {
+  collectViaExtension,
+  detectExtension,
+  EXTENSION_STORE_URL,
+} from '@/lib/extension-bridge';
 
 const PROVIDERS: Array<{ id: ImportProvider; label: string; href: string; hint: string }> = [
   {
@@ -88,10 +92,16 @@ export default function ConnectionImport({
   const openedAt = useRef(0);
 
   /**
-   * 확장이 설치돼 있으면 자동 수집 경로가 열린다. 없으면 이 버튼 자체가 나타나지 않는다 —
-   * 설치하지 않은 사람에게 눌러도 안 되는 버튼을 보여 주면 그게 곧 미완성 인상이 된다.
+   * 확장이 설치돼 있으면 자동 수집 경로가 열린다.
+   *
+   * 없을 때는 예전에 이 자리를 통째로 숨겼다. 웹스토어 게재 전이라 보낼 곳이 없었고,
+   * 눌러도 안 되는 버튼보다는 나았다. 그런데 게재가 끝난 뒤에도 그대로여서 **확장을
+   * 모르는 사람은 이 제품의 주 경로를 만날 길이 없었다.** 지금은 같은 자리에 설치로
+   * 가는 문을 낸다 — 숨기면 사용자가 그런 길이 있다는 것조차 알 수 없다.
    */
   const [extProviders, setExtProviders] = useState<string[]>([]);
+  /** 확인이 끝났는가. 끝나기 전에 설치 안내를 띄우면 이미 설치한 사람에게 잠깐 깜빡인다. */
+  const [extChecked, setExtChecked] = useState(false);
   const [collecting, setCollecting] = useState(false);
   /** 해당 제공사에 로그인이 안 돼 있는 상태. 실패와 구분해 갈 곳을 알려 준다. */
   const [needsLogin, setNeedsLogin] = useState<{ loginUrl: string | null } | null>(null);
@@ -135,16 +145,35 @@ export default function ConnectionImport({
     }
   }, []);
 
-  // 확장이 자동으로 가져올 수 있는 제공사 목록. 확장이 없으면 빈 배열이라 버튼도 없다.
+  // 확장이 자동으로 가져올 수 있는 제공사 목록. 확장이 없으면 빈 배열이고, 그때는
+  //   같은 자리에 설치 안내가 선다.
   useEffect(() => {
     let alive = true;
     void detectExtension().then((v) => {
-      if (alive) setExtProviders(v);
+      if (!alive) return;
+      setExtProviders(v);
+      setExtChecked(true);
     });
     return () => {
       alive = false;
     };
   }, []);
+
+  /**
+   * 설치하고 돌아온 사람이 다시 확인하는 버튼.
+   *
+   * "새로고침하세요"로 떠넘기지 않는 이유: 이 화면은 온보딩 한복판이고, 새로고침하면
+   * 지금까지 밟은 단계가 어디로 갔는지 사용자가 확신하지 못한다. 확인만 다시 하면 된다.
+   */
+  const [rechecking, setRechecking] = useState(false);
+  async function recheckExtension() {
+    if (rechecking) return;
+    setRechecking(true);
+    const v = await detectExtension(1500);
+    setExtProviders(v);
+    setExtChecked(true);
+    setRechecking(false);
+  }
 
   /**
    * 확장으로 한 번에 가져오기.
@@ -375,6 +404,34 @@ export default function ConnectionImport({
             아이디·비밀번호는 읽지 않습니다. 브라우저가 이미 로그인해 둔 화면에서{' '}
             <strong>서비스 이름만</strong> 가져옵니다.
           </p>
+        </div>
+      )}
+
+      {/* 확장이 없을 때 — 같은 자리에 설치로 가는 문을 낸다. 숨기면 이 제품의 주 경로가
+          있다는 것조차 알 수 없다. 아래 붙여넣기 경로는 그대로 열려 있으므로 설치는 강요가 아니다. */}
+      {!parsed && !result && extChecked && !canAutoCollect && !needsLogin && (
+        <div className="ext-collect">
+          <a
+            className="btn btn-primary ext-collect-cta"
+            href={EXTENSION_STORE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            확장 설치하고 한 번에 가져오기 ↗<span className="sr-only">(새 탭에서 열림)</span>
+          </a>
+          <p className="ext-collect-note">
+            확장이 {current.label} 연결목록을 <strong>한 번에</strong> 가져옵니다. 아이디·비밀번호는
+            읽지 않고, 브라우저가 이미 로그인해 둔 화면에서 <strong>서비스 이름만</strong> 읽습니다.
+            설치 없이 아래에서 목록을 붙여넣으셔도 됩니다.
+          </p>
+          <button
+            type="button"
+            className="btn-sm"
+            onClick={() => void recheckExtension()}
+            disabled={rechecking}
+          >
+            {rechecking ? '확인 중…' : '설치했어요 · 다시 확인'}
+          </button>
         </div>
       )}
 

@@ -1562,6 +1562,15 @@ button.nav-link {
 }
 .ext-collect-note strong { color: var(--text); }
 
+/* 설치 안내일 때 주 동작은 <a>다(스토어로 나간다). 버튼과 같은 크기로 서야
+   "이게 주 경로"라는 위계가 유지된다. */
+a.ext-collect-cta {
+  display: block;
+  text-decoration: none;
+  text-align: center;
+}
+.ext-collect .btn-sm { margin-top: 12px; }
+
 /* 로그인이 필요한 상태 — 실패가 아니라 아직 못 한 일이다.
    붉은 오류로 다루면 사용자는 "고장났다"고 읽고 되돌아간다. 갈 곳을 함께 준다. */
 .needs-login {

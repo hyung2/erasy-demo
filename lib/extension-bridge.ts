@@ -29,6 +29,17 @@ function isExtMessage(v: unknown): v is ExtMessage {
 }
 
 /**
+ * 확장 설치 주소(미등록 게재 — 검색에는 뜨지 않고 링크로만 들어간다).
+ *
+ * 화면이 이 주소를 알아야 하는 이유: 예전에는 확장이 없으면 원터치 경로를 통째로 숨겼다.
+ * 웹스토어에 올라가기 전이라 보낼 곳이 없었고, 눌러도 안 되는 버튼을 보여 주는 것보다는
+ * 나았다. 게재가 끝난 뒤에도 그 처리가 남아 있어서, **확장을 모르는 사람은 이 제품의
+ * 주 경로를 만날 길이 자체가 없었다**(2026-08-27 발견).
+ */
+export const EXTENSION_STORE_URL =
+  'https://chromewebstore.google.com/detail/bkdbefmikkiillaiaidlmghijkeflhck';
+
+/**
  * 확장이 있는지, 어느 제공사를 자동으로 가져올 수 있는지 확인한다.
  *
  * 확장은 페이지 로드 시 스스로 ready를 보내지만 앱이 그보다 늦게 뜨면 그 신호를 놓친다
