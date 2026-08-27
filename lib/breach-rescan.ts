@@ -17,15 +17,11 @@
 // 알림이 필요한 사람이 앞사람 사정으로 못 받는다.
 import { prisma } from './prisma';
 import { syncUserBreaches } from './breach-sync';
+import { MIN_INTERVAL_HOURS } from './rescan-schedule';
 
-/**
- * 같은 사용자를 다시 보기까지의 최소 간격.
- *
- * 20시간인 이유: 하루 한 번 도는 크론이 매번 실제로 일하도록 하루보다 짧게 두되,
- * 하루에 두 번 조회되지는 않게 한다. 24시간으로 두면 크론이 몇 분만 일찍 돌아도
- * 그날치가 통째로 건너뛰어진다.
- */
-export const MIN_INTERVAL_HOURS = 20;
+// 간격은 주기 정본(lib/rescan-schedule.ts)에 있다 — 크론 표현식·화면 표기와 같은 곳을 본다.
+// 여기서 다시 내보내는 것은 기존 소비자(가드·크론 라우트)의 import 경로를 그대로 두기 위해서다.
+export { MIN_INTERVAL_HOURS };
 
 /** 한 번의 실행에서 볼 최대 인원. */
 export const MAX_PER_RUN = 25;

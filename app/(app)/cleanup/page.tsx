@@ -12,6 +12,7 @@
 // 조회에 실패하면 시드 숫자로 되돌아가지 않는다. 못 가져왔으면 못 가져왔다고 말한다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ServiceAvatar } from '@/components/ServiceAvatar';
 import { useDemo } from '@/components/DemoStateClient';
 import { primaryLink } from '@/lib/deep-links';
@@ -418,20 +419,31 @@ export default function CleanupPage() {
               </>
             )}
 
-            {breachCheck && (
-              <div className="cleanup-discovery">
-                <span>정리 전, 유출된 계정이 있는지도 확인해 보세요.</span>
-                <a
-                  className="btn-sm"
-                  href={breachCheck.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={breachCheck.description}
-                >
-                  {breachCheck.label} ↗<span className="sr-only">(새 탭에서 열림)</span>
-                </a>
+            {/* 유출 조회로 가는 다리.
+                예전에는 이 자리가 정부 사이트로 사용자를 내보내는 것 하나뿐이었다. 우리가
+                이미 하는 일(HIBP 대조)을 두고 남의 화면으로 보내면 흐름이 거기서 끊긴다.
+                자체 조회를 1순위로 두고 정부 조회는 보조로 남긴다 — 국내 유출 사건은
+                정부 조회가 함께 봐야 하므로 지우지 않는다.
+                담은 것이 0건이어도 보인다. 유출 조회는 정리를 접수한 사람만의 것이 아니다. */}
+            <div className="cleanup-discovery">
+              <span>비밀번호가 유출된 계정이 있는지도 확인해 보세요.</span>
+              <div className="cleanup-discovery-actions">
+                <Link className="btn-sm primary" href="/breach">
+                  유출 확인하기 →
+                </Link>
+                {breachCheck && (
+                  <a
+                    className="btn-sm"
+                    href={breachCheck.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={breachCheck.description}
+                  >
+                    {breachCheck.label} ↗<span className="sr-only">(새 탭에서 열림)</span>
+                  </a>
+                )}
               </div>
-            )}
+            </div>
           </section>
 
           {/* 하단 액션 바 */}

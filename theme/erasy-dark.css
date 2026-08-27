@@ -1084,6 +1084,15 @@ button.nav-link {
   font-size: 0.875rem;
 }
 
+/* 자체 조회(1순위)와 정부 조회(보조)를 한 덩어리로 묶는다 —
+   space-between이 둘을 양끝으로 벌려 놓으면 무엇이 먼저인지 읽히지 않는다. */
+.cleanup-discovery-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* 놓친 계정 찾기 상단 진입점(앵커 콜아웃) + 액션 설명 슬롯 */
 .discovery-anchor {
   display: flex;

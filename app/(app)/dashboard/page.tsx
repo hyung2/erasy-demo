@@ -17,6 +17,13 @@ import type {
 } from '@/lib/api-types';
 import { UNKNOWN_LAST_USED_DAYS } from '@/lib/api-types';
 import type { AxisKey, ActionType } from '@/lib/score-v2';
+import { relativeTime } from '@/lib/activity';
+// 자동 점검 주기·범위 정본. 화면이 자기 상수를 따로 갖지 않는다.
+import {
+  RESCAN_PERIOD_LABEL,
+  RESCAN_SCOPE_LABEL,
+  rescanTimeLabel,
+} from '@/lib/rescan-schedule';
 // peerMonthlyAvg만 남는다 — 또래 평균은 관측치가 아니라 예시 기준선이고, 화면이 "예시" 배지로
 // 그 사실을 말한다. 활동 피드는 실데이터(/api/guard)로 옮겼다.
 import { peerMonthlyAvg } from '@/lib/dummy-data';
@@ -300,7 +307,9 @@ export default function DashboardPage() {
 
   // ── GUARD "지속 관리" 카드 — 정리 후에도 지켜본다 서사(웨이브3). ──
   // 이번 주 변화: 스냅샷 이력 2건+ 있을 때만 delta, 1건이면 "관리 시작"(방어).
-  const hasTrend = (dto?.trend?.length ?? 0) >= 2;
+  // 추이에 실제로 찍힌 점의 개수. 부제의 "최근 N회"가 이 값에서 나온다.
+  const trendCount = dto?.trend?.length ?? 0;
+  const hasTrend = trendCount >= 2;
   const weekChange = hasTrend ? (delta >= 0 ? `+${delta}` : `${delta}`) : '관리 시작';
   const weekChangeCls = !hasTrend ? '' : delta > 0 ? ' up' : delta < 0 ? ' danger' : '';
   // 또래 대비 상위 백분위(데모 기준 근사 — 분포 상수 spread로 z→percentile). 평균 아래면 미표기.
@@ -340,6 +349,13 @@ export default function DashboardPage() {
   //   최약축·상승폭 순이므로 그 첫 칸이 우선 조치다.
   const primaryAction =
     recommendations.find((r) => r.axis === weakestAxis)?.actionType ?? null;
+
+  // "점수 올리는 법"은 이 사용자의 실제 레버 전부다(추천 카드는 상위 3개만 보여준다).
+  //   예전에는 세 줄이 박혀 있어서, 최약축이 "몰랐던 계정"인 사람에게도 "12개월 이상 안 쓴
+  //   소셜 연결을 정리하세요"라고 말했다 — 무대 계정에는 그 기준에 걸리는 계정이 없었다.
+  const guideItems = dto
+    ? [...dto.expectedGains].sort((a, b) => b.expectedGain - a.expectedGain)
+    : [];
 
   // 로그인 후 3.7초 위험 알림 모달: 정리 전에만·흐름당 1회.
   //   0건이면 띄우지 않는 것은 08-18에 고쳤다("위험 계정 0개가 발견됐어요"를 말하던 자리).
@@ -401,10 +417,14 @@ export default function DashboardPage() {
                 ? '아직 찾은 계정이 없어 안전도를 낼 수 없어요. 메일함 스캔으로 시작해 보세요.'
                 : scoreSub}
           </p>
-          {/* 담아 둔 정리는 "예정"으로만 말한다. 접수했다고 점수가 오르지는 않는다. */}
+          {/* 담아 둔 정리는 "예정"으로만 말한다. 접수했다고 점수가 오르지는 않는다.
+              전제를 함께 적는 이유: 이 줄과 추천 액션은 서로 다른 세계를 말한다. 담아 둔
+              정리만 끝냈을 때의 도달점이라 추천 액션의 상승폭은 여기에 들어 있지 않은데,
+              둘이 나란히 서면 "확인하면 +36인데 다 끝내도 35점"이라는 모순으로 읽힌다. */}
           {showProjection && (
             <p className="score-sub score-pending">
-              정리 예정 {pendingCleanup}건 · 끝내면 <strong>{projectedScore}점</strong>
+              담아 둔 정리 {pendingCleanup}건<strong>만</strong> 끝냈을 때{' '}
+              <strong>{projectedScore}점</strong> — 아래 추천 액션은 여기에 들어 있지 않아요
             </p>
           )}
           {!nothingToMeasure && (
@@ -496,6 +516,13 @@ export default function DashboardPage() {
 
       {/* 추천 액션 — 기대 상승폭 기반(최약축 우선). 미준비 시 정적 네비 폴백 */}
       <h2 className="section-label">추천 액션</h2>
+      {/* 상승폭은 각각 그 액션 하나만 했을 때의 값이다. 축이 서로 물려 있어 더한 만큼
+          오르지는 않는다 — 적어 두지 않으면 사용자가 합산해서 기대한다. */}
+      {showRecommendations && (
+        <p className="panel-note">
+          각 상승폭은 그 조치 하나만 했을 때의 값이에요. 여러 개를 더한 만큼 오르지는 않습니다.
+        </p>
+      )}
       <div className="action-grid">
         {showRecommendations
           ? recommendations.map((rec) => {
@@ -654,7 +681,8 @@ export default function DashboardPage() {
           <div>
             <h3>{demo.benchmark.title}</h3>
             <p className="panel-note">
-              {demo.benchmark.sub} · {demo.benchmark.peerNote}
+              {demo.benchmark.sub}
+              {trendCount > 0 ? ` · 최근 ${trendCount}회` : ''} · {demo.benchmark.peerNote}
             </p>
           </div>
           <div className="bench-tags">
@@ -680,11 +708,12 @@ export default function DashboardPage() {
         <div className="panel-head">
           <div>
             <h3>지속 관리</h3>
-            <p className="panel-note">정리 후에도 이레이지가 유출·이상 접속을 계속 지켜봅니다.</p>
+            {/* 하지 않는 일은 적지 않는다 — 이상 접속 자동 점검은 이 제품의 명시적 배제 항목이다. */}
+            <p className="panel-note">정리 후에도 이레이지가 유출 여부를 계속 지켜봅니다.</p>
           </div>
           <span className="badge">{demo.benchmark.badge}</span>
         </div>
-        <div className="stat-grid cols3">
+        <div className="stat-grid">
           <div className="stat">
             <div className="lbl">이번 주 점수 변화</div>
             <div className={`num${weekChangeCls}`}>{weekChange}</div>
@@ -695,10 +724,36 @@ export default function DashboardPage() {
             <div className="num">{aboveePeer ? `상위 ${topPct}%` : '평균 아래'}</div>
             <div className="delta">30대 또래 · 데모 기준</div>
           </div>
+          {/* 유출 대조 이력 — null은 "유출 없음"이 아니라 "아직 대조하지 않음"이다.
+              대조한 적이 없으면 조회로 가는 문을 함께 낸다. 지켜본다고 말하려면 먼저
+              한 번은 봐야 하고, 그 한 번은 사용자가 눌러야 시작된다. */}
           <div className="stat">
-            <div className="lbl">다음 점검</div>
-            <div className="num">7일 후</div>
-            <div className="delta is-up">유출 DB·이상 접속 자동 점검</div>
+            <div className="lbl">마지막 유출 대조</div>
+            <div className="num">
+              {breachState === null
+                ? '—'
+                : breachState.checkedAt === null
+                  ? '아직 없음'
+                  : relativeTime(new Date(breachState.checkedAt))}
+            </div>
+            <div className="delta">
+              {breachState === null ? (
+                '불러오는 중'
+              ) : breachState.checkedAt === null ? (
+                <Link href="/breach">지금 확인하기 →</Link>
+              ) : (
+                `${RESCAN_PERIOD_LABEL} 자동으로도 다시 봅니다`
+              )}
+            </div>
+          </div>
+          {/* 주기·범위는 정본 상수(lib/rescan-schedule.ts)에서 온다. 예전에는 "7일 후"와
+              "이상 접속 자동 점검"이 화면에 박혀 있었는데 둘 다 사실이 아니었다. */}
+          <div className="stat">
+            <div className="lbl">자동 점검</div>
+            <div className="num">{RESCAN_PERIOD_LABEL}</div>
+            <div className="delta is-up">
+              {rescanTimeLabel()} · {RESCAN_SCOPE_LABEL}
+            </div>
           </div>
         </div>
       </section>
@@ -708,11 +763,28 @@ export default function DashboardPage() {
         <div className="modal" onClick={(e) => e.target === e.currentTarget && setGuideOpen(false)}>
           <div className="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-score-title">
             <h3 id="modal-score-title">점수 올리는 법</h3>
-            <ol>
-              <li>유출된 계정의 비밀번호를 교체하세요.</li>
-              <li>12개월 이상 안 쓴 소셜 연결을 정리하세요.</li>
-              <li>2단계 인증(2FA)을 켤 수 있는 계정에 활성화하세요.</li>
-            </ol>
+            {guideItems.length > 0 ? (
+              <ol>
+                {guideItems.map((g) => {
+                  const gain = Math.round(g.expectedGain);
+                  return (
+                    <li key={g.actionType}>
+                      {ACTION_META[g.actionType].label} — {g.accountIndices.length}개 계정
+                      {gain > 0
+                        ? ` · +${gain}점`
+                        : dto?.axes[g.axis].measured
+                          ? ' · 점수는 그대로지만 위험은 줄어요'
+                          : ' · 아직 잴 수 없어 점수는 그대로예요'}
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <p>
+                아직 잴 계정이 없어요. 계정을 먼저 찾으면 무엇부터 하면 되는지 여기에
+                적어 드립니다.
+              </p>
+            )}
             <div className="modal-actions">
               <button type="button" className="btn btn-primary" onClick={() => setGuideOpen(false)}>
                 닫기

@@ -59,6 +59,7 @@ const TIERS: Record<string, Tier> = {
   'verify-selfreport-payload': 'static',
   'verify-axis-visibility': 'static',
   'verify-display-name': 'static',
+  'verify-rescan-schedule': 'static',
 
   'verify-account-deletion': 'db',
   'verify-acknowledge': 'db',
