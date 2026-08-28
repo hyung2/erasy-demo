@@ -30,7 +30,9 @@ export const SCORE_V2_PARAMS = {
   // 못 잰 비중에 매기는 정액 감점의 최대치. 감점 = P × (1 − 측정가중치합).
   //   4축을 다 재면 (1−W)=0이라 감점이 사라져 기존 산식과 완전히 같다.
   //   상한(clamp) 대신 뺄셈인 이유는 unmeasuredPenalty 주석 참조.
-  unmeasuredPenalty: 60,
+  //   45는 "방치축 하나만 잰 신규 사용자가 정리 몇 건 + 유출 대조(유출 0건)로 70을 넘는다"에
+  //   맞춘 값이다(SSOT 5.5 캘리브레이션 표). 60이면 66에 그친다.
+  unmeasuredPenalty: 45,
   // 등급 배지·안심 카피를 내보낼 최소 측정 가중치. 0.8은 "작은 축 하나까지만 빠진 상태"다
   //   — T(0.15)만 미측정이면 0.85로 통과하고, H(0.30)가 빠지면 0.70으로 걸린다.
   confidenceDisplayFloor: 0.8,
@@ -51,7 +53,12 @@ export type ActionType =
   | 'enable_2fa'
   // 발견 계정 확인 — S축 "미인지" 인자를 해소하는 회복 레버. ScoreRowV2.acknowledged 주석 참조.
   // Prisma의 동명 enum(CleanupRequest.actionType)과는 별개다. 확인은 정리 요청을 만들지 않는다.
-  | 'acknowledge';
+  | 'acknowledge'
+  // 유출 대조 수행 — E축을 미측정에서 측정으로 옮기는 레버. 계정 행을 바꾸지 않고 ctx.checked를
+  //   켠다. 미측정 감점(5.5) 아래서는 축을 재는 것 자체가 가장 큰 상승이 될 수 있는데, 그 사실을
+  //   expectedGains에 싣지 않으면 화면이 정리(+10)만 권하고 대조(+25)는 말하지 않는다
+  //   (2026-08-28 실화면). 상승폭은 "유출 0건"을 가정한 값이라 화면이 그 가정을 적어야 한다.
+  | 'check_breach';
 
 // ── 엔진 입력 행 — DB row/dummy 공용 평면 shape(순수 유지·단위검증용) ──
 // v1 AccountSignalRow에 v2 신호(discovered·accessLogObserved) 추가.
@@ -588,13 +595,24 @@ function expectedGain(
   ctx: ScoreContext = {},
 ): number {
   if (base === null || targetIndices.length === 0) return 0;
-  const after = computeComposite(applyAction(rows, actionType, targetIndices), ctx);
+  // 대조는 계정 행이 아니라 문맥을 바꾼다 — checked를 켜고 유출 0건을 가정한 세계.
+  //   이미 대조한 사용자에게는 0이다(targetsFor가 애초에 대상을 비운다).
+  const after =
+    actionType === 'check_breach'
+      ? computeComposite(rows, { ...ctx, checked: true, unlinkedBreaches: [] })
+      : computeComposite(applyAction(rows, actionType, targetIndices), ctx);
   if (after === null) return 0;
   return Math.max(0, after - base); // 회복은 절대 하락 없음 — 음수 clamp
 }
 
 // 액션별 대상 인덱스 산출(활성 계정 한정)
-function targetsFor(rows: ScoreRowV2[], actionType: ActionType): number[] {
+function targetsFor(rows: ScoreRowV2[], actionType: ActionType, ctx: ScoreContext = {}): number[] {
+  // 대조는 계정 단위 조치가 아니다. 아직 대조하지 않았고 잴 계정이 있으면 전 활성 계정이
+  //   대상이고(카드의 "N개 계정"이 이 수), 이미 대조했으면 빈 목록 → 카드가 뜨지 않는다.
+  if (actionType === 'check_breach') {
+    if (ctx.checked) return [];
+    return rows.flatMap((r, i) => (r.removed ? [] : [i]));
+  }
   const out: number[] = [];
   rows.forEach((r, i) => {
     if (r.removed) return;
@@ -644,6 +662,9 @@ export function scoreV2(rows: ScoreRowV2[], ctx: ScoreContext = {}): ScoreV2Resu
 
   // expectedGain 목록: 데이터에 존재하는 회복 레버별 번들
   const leverTypes: ActionType[] = [
+    // 대조를 맨 앞에 둔다. 미측정 감점 아래서는 축을 재는 것이 정리보다 큰 상승이고,
+    //   같은 E축의 resolve_breach보다 앞서야 한다 — 대조하지 않으면 처리할 유출도 없다.
+    'check_breach',
     'password_change',
     'resolve_breach',
     'logout_sessions',
@@ -653,6 +674,7 @@ export function scoreV2(rows: ScoreRowV2[], ctx: ScoreContext = {}): ScoreV2Resu
     'enable_2fa',
   ];
   const axisOfLever: Record<ActionType, AxisKey> = {
+    check_breach: 'exposure',
     password_change: 'hygiene',
     enable_2fa: 'hygiene',
     resolve_breach: 'exposure',
@@ -663,7 +685,7 @@ export function scoreV2(rows: ScoreRowV2[], ctx: ScoreContext = {}): ScoreV2Resu
   };
   const expectedGains: ExpectedGainItem[] = [];
   for (const lever of leverTypes) {
-    const targets = targetsFor(rows, lever);
+    const targets = targetsFor(rows, lever, ctx);
     if (targets.length === 0) continue;
     expectedGains.push({
       axis: axisOfLever[lever],
@@ -676,7 +698,7 @@ export function scoreV2(rows: ScoreRowV2[], ctx: ScoreContext = {}): ScoreV2Resu
   let recommendedAction: RecommendedAction | null = null;
   if (weakestAxis) {
     const actionType = WEAKEST_ACTION[weakestAxis];
-    const targets = targetsFor(rows, actionType);
+    const targets = targetsFor(rows, actionType, ctx);
     if (targets.length > 0) {
       recommendedAction = {
         axis: weakestAxis,

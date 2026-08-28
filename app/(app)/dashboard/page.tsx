@@ -130,6 +130,9 @@ const ACTION_META: Record<ActionType, { label: string; href: string }> = {
   //   "사용자가 목록을 본 시점이 곧 인지 시점"이라는 전제 위에 서 있기 때문이다.
   //   목록을 건너뛰고 확인 처리하면 그 전제가 깨진다. 클릭이 하나 느는 편이 맞다.
   acknowledge: { label: '몰랐던 계정 확인하기', href: '/scan' },
+  // 대조는 계정을 고치는 일이 아니라 유출 축을 재는 일이다. 미측정 감점 아래서는 이것이
+  //   정리 전부보다 큰 상승이라, 카드가 없으면 화면이 작은 레버만 권하게 된다.
+  check_breach: { label: '유출 대조하기', href: '/breach' },
   password_change: { label: '유출된 비밀번호 바꾸기', href: '/breach' },
   resolve_breach: { label: '유출 계정 처리하기', href: '/breach' },
   enable_2fa: { label: '2단계 인증 켜기', href: '/breach' },
@@ -363,23 +366,26 @@ export default function DashboardPage() {
   const axesToShow = dto ? visibleAxes(dto.axes) : AXIS_ORDER;
   const weakestAxis = dto?.weakestAxis ?? null;
 
-  // 추천 액션: 기대 상승폭 내림차순, 최약축 액션 우선. 상위 3개만.
+  // 추천 액션: 기대 상승폭 내림차순. 상위 3개만.
+  //   예전에는 최약축 카드를 무조건 앞에 세웠다. 미측정 감점이 들어온 뒤로는 축을 재는
+  //   카드(대조 +25)가 최약축 정리(+10)보다 큰데, 최약축 우선이면 그 카드가 3위 밖으로
+  //   밀려 화면에서 사라졌다. 상승폭 순이면 최약축 카드도 대개 상위에 있고, 아니면 그게 맞다.
   const recommendations = dto
-    ? [...dto.expectedGains]
-        .sort((a, b) => {
-          const wa = a.axis === weakestAxis ? 1 : 0;
-          const wb = b.axis === weakestAxis ? 1 : 0;
-          if (wa !== wb) return wb - wa;
-          return b.expectedGain - a.expectedGain;
-        })
-        .slice(0, 3)
+    ? [...dto.expectedGains].sort((a, b) => b.expectedGain - a.expectedGain).slice(0, 3)
     : [];
   const showRecommendations = showDiagnostics && recommendations.length > 0;
   // "우선 조치"는 하나다. 최약축 액션이 둘 이상일 때(예: 확인·정리가 둘 다 방치 계정 축)
   //   배지를 전부에 붙이면 무엇부터인지를 말하지 않는 것과 같다. 정렬이 이미
   //   최약축·상승폭 순이므로 그 첫 칸이 우선 조치다.
+  //   예외 하나: 상승폭이 가장 큰 카드가 최약축 카드가 아니면 그쪽이 우선이다. 미측정
+  //   감점 아래서는 대조(축을 재는 일)가 최약축 정리보다 몇 배 크게 오르는데, 최약축만
+  //   고집하면 +10을 우선 조치로 달고 +25는 뒤에 세우게 된다.
+  const topByGain = [...recommendations].sort((a, b) => b.expectedGain - a.expectedGain)[0];
+  const weakestRec = recommendations.find((r) => r.axis === weakestAxis);
   const primaryAction =
-    recommendations.find((r) => r.axis === weakestAxis)?.actionType ?? null;
+    topByGain && (!weakestRec || topByGain.expectedGain > weakestRec.expectedGain)
+      ? topByGain.actionType
+      : (weakestRec?.actionType ?? null);
 
   // "점수 올리는 법"은 이 사용자의 실제 레버 전부다(추천 카드는 상위 3개만 보여준다).
   //   예전에는 세 줄이 박혀 있어서, 최약축이 "몰랐던 계정"인 사람에게도 "12개월 이상 안 쓴
@@ -586,12 +592,18 @@ export default function DashboardPage() {
                     {gain > 0 && <span className="action-gain">+{gain}점</span>}
                   </h4>
                   <p>
-                    {count}개 계정에 적용돼요 ·{' '}
-                    {gain > 0
-                      ? `${axisName} 점수가 오릅니다`
-                      : axisMeasured
-                        ? '지금 점수로는 오르지 않지만 위험은 줄어요'
-                        : `아직 ${axisName} 점수를 재지 못해 지금은 오르지 않아요 — 알려주시면 그때부터 잽니다`}
+                    {rec.actionType === 'check_breach'
+                      ? // 상승폭은 "유출 0건"을 가정한 값이다. 유출이 나오면 그만큼 덜 오르고,
+                        // 대신 "유출 처리하기"가 다음 레버로 열린다. 가정을 적지 않으면 대조 후
+                        // 숫자가 카드와 다를 때 사용자가 화면을 믿지 못한다.
+                        `${count}개 계정을 대조해요 · 유출이 없으면 이만큼 오르고, 있으면 처리할 유출이 보입니다`
+                      : `${count}개 계정에 적용돼요 · ${
+                          gain > 0
+                            ? `${axisName} 점수가 오릅니다`
+                            : axisMeasured
+                              ? '지금 점수로는 오르지 않지만 위험은 줄어요'
+                              : `아직 ${axisName} 점수를 재지 못해 지금은 오르지 않아요 — 알려주시면 그때부터 잽니다`
+                        }`}
                   </p>
                   <span className="action-arrow" aria-hidden="true">
                     →

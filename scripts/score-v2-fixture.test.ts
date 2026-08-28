@@ -215,8 +215,8 @@ eq(blend(AKEYS.map((k) => synthAxis(k, 100))).composite, 100, '전축 100 → �
   // 감점은 float 산출이라 허용오차로 본다(0.45 같은 값이 이진수로 정확히 떨어지지 않는다).
   const near = (a: number, b: number, msg: string) => check(Math.abs(a - b) < 1e-9, msg);
   near(unmeasuredPenalty(1), 0, '감점(W=1.00) = 0 — 전축 측정은 무감점');
-  near(unmeasuredPenalty(0.55), 27, '감점(W=0.55) = 27');
-  near(unmeasuredPenalty(0.2), 48, '감점(W=0.20) = 48');
+  near(unmeasuredPenalty(0.55), 20.25, '감점(W=0.55) = 20.25');
+  near(unmeasuredPenalty(0.2), 36, '감점(W=0.20) = 36');
 
   // 실사용자 구간 재현: E·S만 측정(W=0.55). 감점 없으면 E=100·S=86에서 91이 나오던 자리.
   const es = [
@@ -227,7 +227,7 @@ eq(blend(AKEYS.map((k) => synthAxis(k, 100))).composite, 100, '전축 100 → �
   ];
   const b = blend(es);
   eq(b.measuredWeight, 0.55, 'W: E·S만 측정 → 0.55');
-  eq(b.composite, 64, 'E=100·S=86, W=0.55 → 64(무감점이면 91)');
+  eq(b.composite, 71, 'E=100·S=86, W=0.55 → 71(무감점이면 91)');
   check((b.composite as number) < 80, '미측정 구간은 양호 밴드(80+)에 들지 못한다');
 
   // S축 단독 100 — 확인 버튼으로 감점 인자가 사라져 100점이 되던 경로.
@@ -237,16 +237,37 @@ eq(blend(AKEYS.map((k) => synthAxis(k, 100))).composite, 100, '전축 100 → �
     unmeasuredAxis('hygiene'),
     unmeasuredAxis('threat'),
   ]);
-  eq(sOnly.composite, 52, 'S 단독 100 → 52(무감점이면 100)');
+  eq(sOnly.composite, 64, 'S 단독 100 → 64(무감점이면 100)');
 
   // 바닥 clamp — 감점이 raw보다 커도 음수로 내려가지 않는다.
   const floor = blend([
     unmeasuredAxis('exposure'),
-    synthAxis('surface', 30),
+    synthAxis('surface', 20),
     unmeasuredAxis('hygiene'),
     unmeasuredAxis('threat'),
   ]);
-  eq(floor.composite, 0, 'raw 30 − 감점 48 → 0으로 clamp(음수 없음)');
+  eq(floor.composite, 0, 'raw 20 − 감점 36 → 0으로 clamp(음수 없음)');
+
+  // P 캘리브레이션 시나리오(SSOT 5.5): S 단독 88 → 대조(유출 0) 후 70 이상.
+  const newcomer = blend([
+    unmeasuredAxis('exposure'),
+    synthAxis('surface', 88),
+    unmeasuredAxis('hygiene'),
+    unmeasuredAxis('threat'),
+  ]);
+  const checked = blend([
+    synthAxis('exposure', 100),
+    synthAxis('surface', 89),
+    unmeasuredAxis('hygiene'),
+    unmeasuredAxis('threat'),
+  ]);
+  eq(newcomer.composite, 52, '신규(S 단독 88) 시작 = 52');
+  eq(checked.composite, 73, '정리 몇 건 + 대조(유출 0) = 73');
+  check((checked.composite as number) >= 70, '캘리브레이션 목표: 대조 후 70 이상');
+  check(
+    (checked.composite as number) - (newcomer.composite as number) >= 20,
+    `캘리브레이션 목표: 상승폭 20 이상(+${(checked.composite as number) - (newcomer.composite as number)})`,
+  );
 
   /**
    * 상승폭 보존 — 이 구조를 택한 이유 그 자체다.
@@ -424,6 +445,24 @@ function row(over: Partial<ScoreRowV2>): ScoreRowV2 {
       check((a.score as number) >= (b.score as number), `투영 ${k} 축 비하락`);
     }
   }
+}
+
+// ── 대조 레버(check_breach) — 미측정 감점 아래서 축을 재는 것이 expectedGains에 실려야 한다 ──
+{
+  // 대조 전(checked 없음): E 미측정. 대조 카드가 있어야 하고 상승폭이 정리보다 커야 한다.
+  const rows = anchor.map((r) => ({ ...r, breachedUnresolved: false })); // 유출 0건 세계
+  const before = scoreV2Raw(rows, {});
+  const cb = before.expectedGains.find((g) => g.actionType === 'check_breach');
+  check(cb !== undefined, '대조 전: check_breach 카드 존재');
+  check((cb?.expectedGain ?? 0) > 0, `대조 전: 대조 상승폭 > 0(+${cb?.expectedGain.toFixed(1)})`);
+  check(cb?.axis === 'exposure', '대조 카드 축 = exposure');
+  eq(cb?.accountIndices.length, rows.filter((r) => !r.removed).length, '대조 대상 = 전 활성 계정');
+  const del = before.expectedGains.find((g) => g.actionType === 'delete');
+  if (del) check((cb!.expectedGain) > del.expectedGain, `대조(+${cb!.expectedGain.toFixed(1)}) > 정리(+${del.expectedGain.toFixed(1)})`);
+
+  // 대조 후(checked=true): 카드가 사라진다 — 이미 잰 축을 다시 재라고 권하지 않는다.
+  const after = scoreV2Raw(rows, { checked: true });
+  eq(after.expectedGains.some((g) => g.actionType === 'check_breach'), false, '대조 후: check_breach 카드 없음');
 }
 
 // ── 멱등: 2회 실행 drift 0 ──
