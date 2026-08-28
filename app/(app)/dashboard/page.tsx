@@ -17,6 +17,8 @@ import type {
 } from '@/lib/api-types';
 import { UNKNOWN_LAST_USED_DAYS } from '@/lib/api-types';
 import type { AxisKey, ActionType } from '@/lib/score-v2';
+// 측정 두께는 화면이 따로 세지 않는다 — 산식이 쓰는 그 함수·그 임계로 표기 수위를 정한다.
+import { measuredWeight, SCORE_V2_PARAMS } from '@/lib/score-v2';
 import { relativeTime } from '@/lib/activity';
 // 자동 점검 주기·범위 정본. 화면이 자기 상수를 따로 갖지 않는다.
 import {
@@ -271,9 +273,35 @@ export default function DashboardPage() {
   // 셈이라, 점수 자리를 비우고 무엇을 하면 되는지만 말한다.
   const nothingToMeasure = loadState === 'ready' && inv !== null && inv.total === 0;
 
-  const scoreClass = grade === '위험' ? ' is-danger' : grade === '주의' ? ' is-warn' : '';
-  const gaugeClass = grade === '양호' ? ' is-safe' : grade === '주의' ? ' is-warn' : ' is-danger';
-  const badgeClass = grade === '양호' ? 'badge live' : 'badge warn-badge';
+  // 잰 축이 얼마나 두터운가. 4축을 다 재면 1.00, 유출·방치만 잰 상태면 0.55다.
+  //   화면이 자기 기준을 따로 갖지 않도록 산식이 쓰는 함수를 그대로 쓴다.
+  const mWeight = dto
+    ? measuredWeight(AXIS_ORDER.map((k) => ({ ...dto.axes[k], key: k })))
+    : 1;
+  const measuredAxisCount = dto
+    ? AXIS_ORDER.filter((k) => dto.axes[k].measured && dto.axes[k].score !== null).length
+    : AXIS_ORDER.length;
+  /**
+   * 근거가 얇은 점수. 등급 배지와 안심 카피를 여기서 끊는다.
+   *
+   * 산식은 이미 신뢰 상한으로 숫자를 눌러 두지만, 눌린 숫자에도 "등급 양호"와
+   * "안전한 상태예요"가 붙으면 사용자는 여전히 다 재고 나온 결론으로 읽는다.
+   * 실제로 4축 중 2축이 카드에 "확인 불가"라고 서 있는데 헤드라인만 양호였다
+   * (2026-08-28 prod 실화면). 숫자를 낮추는 일과 말투를 낮추는 일은 별개다.
+   */
+  const lowConfidence = loadState === 'ready' && !nothingToMeasure && mWeight < SCORE_V2_PARAMS.confidenceDisplayFloor;
+
+  // 근거가 얇으면 "양호"의 안심 표기만 거둔다. 위험은 그대로 위험으로 둔다 — 얇은 근거가
+  //   더 나쁜 신호를 완화하는 쪽으로 작동하면 안 된다.
+  const scoreClass =
+    grade === '위험'
+      ? ' is-danger'
+      : grade === '주의' || lowConfidence
+        ? ' is-warn'
+        : '';
+  const gaugeClass =
+    grade === '위험' ? ' is-danger' : grade === '주의' || lowConfidence ? ' is-warn' : ' is-safe';
+  const badgeClass = grade === '양호' && !lowConfidence ? 'badge live' : 'badge warn-badge';
 
   // 델타 표기(방어) — 상승/하락/변동없음. 스냅샷 1건이면 delta 0.
   const deltaText =
@@ -281,8 +309,11 @@ export default function DashboardPage() {
   const deltaClass = delta > 0 ? 'score-up' : delta < 0 ? 'score-up is-down' : 'score-up is-flat';
 
   // 등급별 헤드라인 서브 카피(정직 표기 — 위험 상태를 "오르는 중"으로 과장하지 않음).
-  const scoreSub =
-    grade === '양호'
+  //   근거가 얇을 때는 등급 대신 측정 상태를 먼저 말한다. 아직 재지 못한 축이 있다는 사실이
+  //   지금 점수를 읽는 데 필요한 첫 정보이고, 그걸 알아야 다음에 뭘 할지도 정해진다.
+  const scoreSub = lowConfidence
+    ? `4축 중 ${measuredAxisCount}축만 잰 결과예요. 나머지는 아직 확인하지 못해 점수에 들어가 있지 않아요.`
+    : grade === '양호'
       ? '안전한 상태예요. 남은 위험만 관리하면 됩니다.'
       : grade === '주의'
         ? '위험이 남아 있어요. 아래 진단에서 취약한 축부터 정리해 보세요.'
@@ -401,7 +432,15 @@ export default function DashboardPage() {
             )}
             <small>/ 100</small>
           </div>
-          {!nothingToMeasure && <span className={badgeClass}>등급 {grade}</span>}
+          {/* 근거가 얇으면 등급을 말하지 않는다. 등급은 4축을 다 재고 나서 붙는 결론인데,
+              두 축을 못 잰 채로 "양호"를 달면 화면이 알지 못하는 것을 아는 척하게 된다.
+              대신 무엇이 남았는지를 배지 자리에 그대로 적는다. */}
+          {!nothingToMeasure &&
+            (lowConfidence ? (
+              <span className={badgeClass}>{measuredAxisCount}/4축 측정</span>
+            ) : (
+              <span className={badgeClass}>등급 {grade}</span>
+            ))}
         </div>
 
         <div className="score-meta">
@@ -579,7 +618,15 @@ export default function DashboardPage() {
         <div className="stat">
           <div className="lbl">연결 계정</div>
           <div className="num">{n(inv?.total) === null ? '—' : <CountUp value={inv!.total} />}</div>
-          <div className="delta">{inv === null ? '불러오는 중' : `확인된 계정 ${inv.total}개 기준`}</div>
+          {/* "확인된 계정 N개 기준"의 N은 오래도록 전체 계정 수였다. 227개를 찾아 놓고 그중
+              180개가 언제 썼는지도 모르는 상태에서 화면은 227개를 다 확인했다고 말했다
+              (2026-08-28 prod 실화면). 확인의 분자는 사용 이력을 아는 계정 수(surface 축의
+              coveredCount)다. 전체 수는 바로 위 큰 숫자가 이미 말하고 있다. */}
+          <div className="delta">
+            {inv === null || dto === null
+              ? '불러오는 중'
+              : `사용 이력을 확인한 계정 ${dto.axes.surface.coveredCount}개`}
+          </div>
         </div>
         <div className="stat">
           <div className="lbl">유출 발견</div>

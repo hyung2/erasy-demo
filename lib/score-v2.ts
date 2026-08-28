@@ -27,6 +27,12 @@ export const SCORE_V2_PARAMS = {
   // 종합 블렌드
   weights: { exposure: 0.35, hygiene: 0.3, surface: 0.2, threat: 0.15 },
   lambda: 0.45, // 최약축 혼합 비중 — 마스킹 차단 보장 최소값(>0.412)에서 여유
+  // 신뢰 상한의 바닥. 아무 축도 재지 못한 세계의 상한이고, 4축을 다 재면 상한이 100으로 풀린다.
+  //   cap = base + (100 − base) × 측정가중치합. 50이면 1축(0.2)만 잰 상태의 상한이 60이다.
+  confidenceCapBase: 50,
+  // 등급 배지·안심 카피를 내보낼 최소 측정 가중치. 0.8은 "작은 축 하나까지만 빠진 상태"다
+  //   — T(0.15)만 미측정이면 0.85로 통과하고, H(0.30)가 빠지면 0.70으로 걸린다.
+  confidenceDisplayFloor: 0.8,
   // 경계값(일 단위)
   dormantDays: 730,
   staleDays: 365,
@@ -107,6 +113,9 @@ export type ExpectedGainItem = {
 export type ScoreV2Result = {
   composite: number | null; // null = 측정 불가(측정 축 0개)
   measured: boolean;
+  // 측정된 축의 명목 가중치 합(0~1). 종합이 얼마나 두터운 근거 위에 서 있는지를 말한다.
+  //   화면은 이 값으로 등급 배지·안심 카피를 낼지 정한다(confidenceDisplayFloor).
+  measuredWeight: number;
   grade: Grade | null;
   weakestAxis: AxisKey | null;
   axes: Record<AxisKey, AxisScore>;
@@ -408,16 +417,46 @@ export function computeThreat(rows: ScoreRowV2[]): AxisScore {
   };
 }
 
-// ── 5. 종합 블렌드: (1−λ)×WA + λ×worst, 측정 축만 재정규화 ──
+/**
+ * 측정된 축의 명목 가중치 합. 4축을 다 재면 1.00, 유출·방치만 잰 상태면 0.55다.
+ * blend의 재정규화 분모이자 신뢰 상한의 입력이고, 화면도 같은 값으로 표기 수위를 정한다.
+ */
+export function measuredWeight(
+  axes: { key: AxisKey; measured: boolean; score: number | null }[],
+): number {
+  return axes
+    .filter((a) => a.measured && a.score !== null)
+    .reduce((s, a) => s + SCORE_V2_PARAMS.weights[a.key], 0);
+}
+
+/**
+ * 측정 가중치 합에 따른 종합 상한.
+ *
+ * 재정규화만 하면 못 잰 축의 몫이 잰 축으로 통째로 넘어간다. 유출만 대조하고 유출이
+ * 없었던 사람은 그 한 축이 실효 가중치를 독점해 종합이 100 가까이 뜬다 — 비밀번호도
+ * 접속 기록도 본 적이 없는데 화면은 "안전한 상태"라고 말한다(2026-08-28 실측: 실사용자
+ * 4명 전원 측정 가중치 0.55, 그중 3명이 양호 등급).
+ *
+ * 못 잰 축을 0점으로 깔면 모르는 것을 최악으로 단정하게 되므로 그 길은 택하지 않는다.
+ * 대신 **모르는 만큼 높은 점수를 주장하지 않는다**. 미측정은 여전히 감점이 아니고,
+ * 다만 안심의 근거로도 쓰이지 않는다.
+ */
+export function confidenceCap(weight: number): number {
+  const base = SCORE_V2_PARAMS.confidenceCapBase;
+  return base + (100 - base) * Math.max(0, Math.min(1, weight));
+}
+
+// ── 5. 종합 블렌드: (1−λ)×WA + λ×worst, 측정 축만 재정규화 + 신뢰 상한 ──
 export function blend(axes: AxisScore[]): {
   composite: number | null;
   weakestAxis: AxisKey | null;
   measured: boolean;
+  measuredWeight: number;
 } {
   const P = SCORE_V2_PARAMS;
   const measuredAxes = axes.filter((a) => a.measured && a.score !== null);
   if (measuredAxes.length === 0) {
-    return { composite: null, weakestAxis: null, measured: false };
+    return { composite: null, weakestAxis: null, measured: false, measuredWeight: 0 };
   }
   const totalW = measuredAxes.reduce((s, a) => s + P.weights[a.key], 0);
   const wa =
@@ -437,8 +476,10 @@ export function blend(axes: AxisScore[]): {
   }
 
   const raw = (1 - P.lambda) * wa + P.lambda * worst;
-  const composite = Math.max(0, Math.min(100, Math.round(raw)));
-  return { composite, weakestAxis: weakest.key, measured: true };
+  // 상한도 raw 도메인에서 건다 — 이 파일의 원칙대로 반올림은 마지막 한 번뿐이다(머리말 참조).
+  const capped = Math.min(raw, confidenceCap(totalW));
+  const composite = Math.max(0, Math.min(100, Math.round(capped)));
+  return { composite, weakestAxis: weakest.key, measured: true, measuredWeight: totalW };
 }
 
 export function deriveGrade(score: number): Grade {
@@ -584,7 +625,7 @@ const WEAKEST_ACTION: Record<AxisKey, ActionType> = {
 // ── 엔진 본체: rows → 종합·4축·최약축·추천액션·expectedGain 목록 ──
 export function scoreV2(rows: ScoreRowV2[], ctx: ScoreContext = {}): ScoreV2Result {
   const axes = computeAxes(rows, ctx);
-  const { composite, weakestAxis, measured } = blend([
+  const { composite, weakestAxis, measured, measuredWeight: mw } = blend([
     axes.exposure,
     axes.surface,
     axes.hygiene,
@@ -639,6 +680,7 @@ export function scoreV2(rows: ScoreRowV2[], ctx: ScoreContext = {}): ScoreV2Resu
   return {
     composite,
     measured,
+    measuredWeight: mw,
     grade: composite === null ? null : deriveGrade(composite),
     weakestAxis,
     axes,

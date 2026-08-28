@@ -14,6 +14,8 @@ import {
   computeHygiene,
   computeThreat,
   blend,
+  measuredWeight,
+  confidenceCap,
   applyAction,
   deriveGrade,
   type ScoreRowV2,
@@ -170,6 +172,10 @@ eq(egPw?.expectedGain, 22, 'expectedGain(비번교체) = +22');
 function synthAxis(key: AxisScore['key'], score: number): AxisScore {
   return { key, score, measured: true, coveredCount: 1, totalCount: 1, coverage: 1, topFinding: null };
 }
+/** 재지 못한 축. 신뢰 상한(5.5) 검증에서 W를 깎는 쪽으로 쓴다. */
+function unmeasuredAxis(key: AxisScore['key']): AxisScore {
+  return { key, score: null, measured: false, coveredCount: 0, totalCount: 0, coverage: 0, topFinding: null };
+}
 const AKEYS: AxisScore['key'][] = ['exposure', 'surface', 'hygiene', 'threat'];
 
 // 3-1. 마스킹 차단: 임의 한 축=0, 나머지 100 → 항상 위험(<50)
@@ -189,8 +195,47 @@ for (const x of [37, 55, 72, 88]) {
   const b = blend(AKEYS.map((k) => synthAxis(k, x)));
   eq(b.composite, x, `합의 보존: 전축 ${x} → 종합 ${x}`);
 }
-// 3-3. 전축 100 → 100
+// 3-3. 전축 100 → 100 (W=1 → 신뢰 상한 해제)
 eq(blend(AKEYS.map((k) => synthAxis(k, 100))).composite, 100, '전축 100 → 종합 100');
+
+// 3-5. 신뢰 상한(SSOT 5.5) — 못 잰 축의 몫이 잰 축으로 넘어가 100 가까이 뜨던 것을 막는다.
+{
+  // W=1이면 상한 100 — 4축 다 잰 결과는 건드리지 않는다(회귀 방지의 핵심).
+  eq(measuredWeight(AKEYS.map((k) => synthAxis(k, 100))), 1, 'W: 4축 측정 → 1.00');
+  eq(confidenceCap(1), 100, 'cap(1.00) = 100 — 상한 해제');
+  eq(confidenceCap(0.55), 77.5, 'cap(0.55) = 77.5');
+  eq(confidenceCap(0.2), 60, 'cap(0.20) = 60');
+
+  // 실사용자 구간 재현: E·S만 측정(W=0.55). 상한 없으면 E=100·S=86에서 91이 나오던 자리.
+  const es = [
+    synthAxis('exposure', 100),
+    synthAxis('surface', 86),
+    unmeasuredAxis('hygiene'),
+    unmeasuredAxis('threat'),
+  ];
+  const b = blend(es);
+  eq(b.measuredWeight, 0.55, 'W: E·S만 측정 → 0.55');
+  eq(b.composite, 78, 'E=100·S=86, W=0.55 → 상한 78(무상한이면 91)');
+  check((b.composite as number) < 80, '상한 구간은 양호 밴드(80+)에 들지 못한다');
+
+  // S축 단독 100 — 확인 버튼으로 감점 인자가 사라져 100점이 되던 경로.
+  const sOnly = blend([
+    unmeasuredAxis('exposure'),
+    synthAxis('surface', 100),
+    unmeasuredAxis('hygiene'),
+    unmeasuredAxis('threat'),
+  ]);
+  eq(sOnly.composite, 60, 'S 단독 100 → 상한 60(무상한이면 100)');
+
+  // 상한은 아래를 끌어올리지 않는다 — 이미 낮은 점수는 그대로.
+  const low = blend([
+    synthAxis('exposure', 20),
+    synthAxis('surface', 30),
+    unmeasuredAxis('hygiene'),
+    unmeasuredAxis('threat'),
+  ]);
+  check((low.composite as number) < 30, `상한은 하한이 아니다 — 낮은 점수 불변(${low.composite})`);
+}
 
 // 3-4. 가중평균 단독보다 낮거나 같음(최약축 끌어내림) — 앵커로 검증
 {
