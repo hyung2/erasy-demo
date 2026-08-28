@@ -1,10 +1,14 @@
 'use client';
 
-// 로그인 진입. 두 경로가 같은 결과 상태로 착지한다.
-//  (1) 구글로 시작하기 → 실 Google OAuth(Auth.js v5, 최소 scope)
-//  (2) 이메일로 가입/로그인 → /api/register + credentials signIn
+// 로그인 진입 — 한 화면에 한 가지 행동만.
+//
+// 예전에는 로그인/가입 탭을 사용자가 먼저 골라야 했다. 그런데 "내가 이 서비스에 가입했던가"는
+// 사용자가 기억할 일이 아니라 우리가 아는 사실이다. 그래서 탭을 없애고 이메일부터 받는다:
+//   (0) 구글로 시작하기 — 실 Google OAuth(최소 scope). 언제나 한 번에 끝나는 문.
+//   (1) 이메일 입력 → 계속  (여기까지가 첫 화면의 전부)
+//   (2) 서버가 가입 여부를 판정 → 기존이면 "비밀번호 입력", 처음이면 "비밀번호 만들기"
 // 어느 쪽이든 첫 진입 시 빈 진단 화면에서 시작한다(08-18에 데모 데이터 프로비저닝 제거).
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { signIn } from 'next-auth/react';
 import { brand, demo } from '@/content/copy';
@@ -20,43 +24,89 @@ function GoogleG({ size = 18 }: { size?: number }) {
   );
 }
 
-type Mode = 'signin' | 'signup';
+/**
+ * 이메일을 낸 뒤의 화면 상태.
+ * - signin: 가입된 이메일 → 비밀번호 입력
+ * - signup: 처음 온 이메일 → 비밀번호 만들기
+ * - google-only: 구글로만 만든 계정 → 비밀번호가 없으니 묻지 않고 구글 버튼으로 보낸다.
+ *   비밀번호 칸을 그냥 보여주면 사용자는 "맞는 비밀번호"를 영원히 못 넣는다.
+ */
+type Step = { name: 'email' } | { name: 'password'; mode: 'signin' | 'signup' } | { name: 'google-only' };
 
 export default function LoginPage() {
-  const [pending, setPending] = useState<'google' | 'email' | null>(null);
-  const [mode, setMode] = useState<Mode>('signin');
+  const [pending, setPending] = useState<'google' | 'check' | 'submit' | null>(null);
+  const [step, setStep] = useState<Step>({ name: 'email' });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   const copy = demo.login;
   const busy = pending !== null;
 
+  // 비밀번호 단계로 넘어오면 커서를 바로 그 칸에 둔다 — 다음 행동이 하나뿐이므로
+  // 클릭 한 번을 더 시킬 이유가 없다.
+  useEffect(() => {
+    if (step.name === 'password') passwordRef.current?.focus();
+  }, [step.name]);
+
   function startGoogle() {
     setPending('google');
     // 콜백 성공 후 /after-login이 착지점을 정한다 — 계정이 없으면 온보딩, 있으면 대시보드.
-    // 전에는 늘 /scanning으로 보내서, 이미 계정을 모아 둔 사용자도 매번 4단계를 지나야 했다.
     void signIn('google', { redirectTo: '/after-login' });
   }
 
-  function switchMode(next: Mode) {
-    setMode(next);
-    setError(null);
-  }
-
+  /** 1단계: 이메일만 받고, 로그인인지 가입인지는 서버가 판정한다. */
   async function submitEmail(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
     setError(null);
-    setPending('email');
+    setPending('check');
+    try {
+      const res = await fetch('/api/register/check', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const json = (await res.json()) as {
+        ok: boolean;
+        data?: { exists: boolean; hasPassword: boolean };
+        error?: string;
+      };
+      if (!json.ok || !json.data) {
+        setError(json.error ?? '확인에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+      }
+      if (!json.data.exists) setStep({ name: 'password', mode: 'signup' });
+      else if (json.data.hasPassword) setStep({ name: 'password', mode: 'signin' });
+      else setStep({ name: 'google-only' });
+    } catch {
+      setError('네트워크 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setPending(null);
+    }
+  }
+
+  /** 처음 화면으로. 이메일은 남겨 둔다 — 오타 교정이 목적이지 처음부터 다시가 아니다. */
+  function backToEmail() {
+    setStep({ name: 'email' });
+    setPassword('');
+    setError(null);
+  }
+
+  /** 2단계: 판정에 따라 로그인 또는 가입+로그인. */
+  async function submitPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy || step.name !== 'password') return;
+    setError(null);
+    setPending('submit');
 
     try {
-      if (mode === 'signup') {
+      if (step.mode === 'signup') {
         const res = await fetch('/api/register', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ email, password, name }),
+          body: JSON.stringify({ email, password }),
         });
         const json = (await res.json()) as { ok: boolean; error?: string };
         if (!json.ok) {
@@ -70,15 +120,15 @@ export default function LoginPage() {
       const result = await signIn('credentials', { email, password, redirect: false });
       if (result?.error) {
         setError(
-          mode === 'signup'
+          step.mode === 'signup'
             ? '가입은 됐지만 로그인에 실패했습니다. 다시 로그인해 주세요.'
-            : '이메일 또는 비밀번호가 맞지 않습니다.',
+            : '비밀번호가 맞지 않습니다.',
         );
         setPending(null);
         return;
       }
 
-      // 성공 — 구글 경로와 동일하게 스캔 연출을 거쳐 대시보드로.
+      // 성공 — 구글 경로와 동일하게 /after-login이 착지점을 정한다.
       window.location.href = '/after-login';
     } catch {
       setError('네트워크 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
@@ -101,99 +151,121 @@ export default function LoginPage() {
         </div>
 
         <div className="panel auth-card">
-          <div className="auth-tabs" role="tablist" aria-label="로그인 방식">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'signin'}
-              className={`auth-tab${mode === 'signin' ? ' is-active' : ''}`}
-              onClick={() => switchMode('signin')}
-              disabled={busy}
-            >
-              {copy.tabSignin}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'signup'}
-              className={`auth-tab${mode === 'signup' ? ' is-active' : ''}`}
-              onClick={() => switchMode('signup')}
-              disabled={busy}
-            >
-              {copy.tabSignup}
-            </button>
-          </div>
+          {step.name === 'email' && (
+            <>
+              {/* 구글이 맨 위 — 가장 짧은 문이고, 이메일 경로와 겹치지 않는다. */}
+              <button
+                type="button"
+                className="btn btn-google lg"
+                onClick={startGoogle}
+                disabled={busy}
+              >
+                <GoogleG />
+                {copy.google}
+              </button>
+              <p className="auth-eyebrow">{copy.eyebrow}</p>
 
-          <form className="auth-form" onSubmit={submitEmail}>
-            {mode === 'signup' && (
+              <div className="auth-divider">
+                <span>{copy.divider}</span>
+              </div>
+
+              <form className="auth-form" onSubmit={submitEmail}>
+                <label className="auth-field">
+                  <span>{copy.emailLabel}</span>
+                  <input
+                    className="text-input"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder={copy.emailPlaceholder}
+                    autoComplete="email"
+                    required
+                    disabled={busy}
+                  />
+                </label>
+
+                {error && (
+                  <p className="status danger" role="alert">
+                    {error}
+                  </p>
+                )}
+
+                <button type="submit" className="btn btn-primary lg" disabled={busy}>
+                  {pending === 'check' ? copy.pending : copy.continueEmail}
+                </button>
+              </form>
+            </>
+          )}
+
+          {step.name === 'password' && (
+            <form className="auth-form" onSubmit={submitPassword}>
+              {/* 무엇에 대한 비밀번호인지 화면이 말해 준다. 뒤로 가는 길은 작게 —
+                  주 행동은 어디까지나 아래 버튼 하나다. */}
+              <p className="auth-step-email">
+                <strong>{email}</strong>
+                <button type="button" className="linklike" onClick={backToEmail} disabled={busy}>
+                  {copy.back}
+                </button>
+              </p>
+              <p className="advice" role="status">
+                {step.mode === 'signup' ? copy.passwordTitleNew : copy.passwordTitleKnown}
+              </p>
+
               <label className="auth-field">
-                <span>{copy.nameLabel}</span>
+                <span>{copy.passwordLabel}</span>
                 <input
+                  ref={passwordRef}
                   className="text-input"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={copy.namePlaceholder}
-                  autoComplete="name"
-                  maxLength={50}
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={step.mode === 'signup' ? copy.passwordHint : copy.passwordPlaceholder}
+                  autoComplete={step.mode === 'signup' ? 'new-password' : 'current-password'}
+                  required
+                  minLength={step.mode === 'signup' ? 10 : undefined}
                   disabled={busy}
                 />
               </label>
-            )}
 
-            <label className="auth-field">
-              <span>{copy.emailLabel}</span>
-              <input
-                className="text-input"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={copy.emailPlaceholder}
-                autoComplete="email"
-                required
-                disabled={busy}
-              />
-            </label>
+              {error && (
+                <p className="status danger" role="alert">
+                  {error}
+                </p>
+              )}
 
-            <label className="auth-field">
-              <span>{copy.passwordLabel}</span>
-              <input
-                className="text-input"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={mode === 'signup' ? copy.passwordHint : copy.passwordPlaceholder}
-                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                required
-                minLength={mode === 'signup' ? 10 : undefined}
-                disabled={busy}
-              />
-            </label>
+              <button type="submit" className="btn btn-primary lg" disabled={busy}>
+                {pending === 'submit'
+                  ? copy.pending
+                  : step.mode === 'signup'
+                    ? copy.submitSignup
+                    : copy.submitSignin}
+              </button>
+            </form>
+          )}
 
-            {error && (
-              <p className="status danger" role="alert">
-                {error}
+          {step.name === 'google-only' && (
+            <div className="auth-form">
+              <p className="auth-step-email">
+                <strong>{email}</strong>
+                <button type="button" className="linklike" onClick={backToEmail} disabled={busy}>
+                  {copy.back}
+                </button>
               </p>
-            )}
-
-            <button type="submit" className="btn btn-primary lg" disabled={busy}>
-              {pending === 'email'
-                ? copy.pending
-                : mode === 'signup'
-                  ? copy.submitSignup
-                  : copy.submitSignin}
-            </button>
-          </form>
-
-          <div className="auth-divider">
-            <span>{copy.divider}</span>
-          </div>
-
-          <button type="button" className="btn btn-google lg" onClick={startGoogle} disabled={busy}>
-            <GoogleG />
-            {copy.google}
-          </button>
-          <p className="auth-eyebrow">{copy.eyebrow}</p>
+              {/* 비밀번호가 없는 계정에 비밀번호를 물으면 영원히 못 들어온다. 문이 하나뿐임을 말해 준다. */}
+              <p className="advice" role="status">
+                {copy.googleOnly}
+              </p>
+              <button
+                type="button"
+                className="btn btn-google lg"
+                onClick={startGoogle}
+                disabled={busy}
+              >
+                <GoogleG />
+                {copy.google}
+              </button>
+            </div>
+          )}
         </div>
 
         <p className="auth-disclaimer">{copy.disclaimer}</p>

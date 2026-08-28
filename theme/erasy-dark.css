@@ -1773,30 +1773,19 @@ a.ext-collect-cta {
 .scan-hits .report-row { font-size: 0.9375rem; }
 .scan-hits .report-row .advice { font-size: 0.8125rem; }
 
-/* 자체 가입(이메일+비밀번호) — 구글 버튼과 같은 카드 안에서 탭으로 전환 */
-.auth-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 4px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-.auth-tab {
-  padding: 9px 12px;
-  border: none;
-  border-radius: calc(var(--radius-sm) - 2px);
-  background: transparent;
-  color: var(--text-dim);
-  font-family: inherit;
+/* 자체 로그인·가입 — 탭 없이 이메일부터. 비밀번호 단계에서 어느 이메일에 대한
+   비밀번호인지와 되돌아갈 길을 한 줄로 보여준다(주 행동은 아래 버튼 하나). */
+.auth-step-email {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
   font-size: 0.9375rem;
-  font-weight: 600;
-  cursor: pointer;
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
-.auth-tab:hover:not(:disabled) { color: var(--text); }
-.auth-tab.is-active { background: var(--surface-3); color: #fff; }
-.auth-tab:disabled { cursor: not-allowed; opacity: 0.6; }
+.auth-step-email .linklike { flex-shrink: 0; font-size: 0.8125rem; }
 
 .auth-form { display: flex; flex-direction: column; gap: 12px; text-align: left; }
 .auth-field { display: flex; flex-direction: column; gap: 6px; }
