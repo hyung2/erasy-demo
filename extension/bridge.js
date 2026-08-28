@@ -17,7 +17,7 @@ function announce() {
   chrome.runtime.sendMessage({ type: 'erasy:providers' }, (res) => {
     const providers = chrome.runtime.lastError ? [] : (res?.providers ?? []);
     window.postMessage(
-      { source: EXT, type: 'ready', version: '0.2.0', providers },
+      { source: EXT, type: 'ready', version: '0.2.1', providers },
       window.location.origin,
     );
   });
@@ -34,6 +34,17 @@ window.addEventListener('message', (event) => {
 
   if (data.type === 'ping') {
     announce();
+    return;
+  }
+
+  // "지금 이 제공사 로그인을 기다린다"는 등록/해제. 로그인이 다른 탭에서 감지되면
+  // 백그라운드가 이 탭을 앞으로 가져온다. 응답은 필요 없다 — 실패해도 사용자가
+  // 직접 돌아오는 기존 경로가 그대로 있다.
+  if (data.type === 'login-watch') {
+    chrome.runtime.sendMessage(
+      { type: 'erasy:loginWatch', provider: data.provider, on: !!data.on },
+      () => void chrome.runtime.lastError, // 수신자가 없어도 조용히 — 콘솔 오류를 남길 일이 아니다
+    );
     return;
   }
 

@@ -130,6 +130,19 @@ export function probeLoginState(provider: string, timeoutMs = 1200): Promise<Log
   });
 }
 
+/**
+ * "지금 이 제공사 로그인을 기다린다"를 확장에 알린다(등록/해제).
+ *
+ * 등록돼 있는 동안 다른 탭에서 그 제공사 로그인이 감지되면, 확장(0.2.1+)이 이 탭을
+ * 앞으로 가져온다 — 로그인은 이레이지를 위해 한 일이므로 끝나면 하던 화면으로
+ * 데려다 주는 것까지가 흐름이다. 구버전 확장은 이 신호를 모르고 조용히 무시하며,
+ * 그 경우 사용자가 직접 돌아왔을 때의 감지(probeLoginState)가 그대로 동작한다.
+ */
+export function watchLogin(provider: string, on: boolean): void {
+  if (typeof window === 'undefined') return;
+  window.postMessage({ source: APP, type: 'login-watch', provider, on }, window.location.origin);
+}
+
 export type CollectResult =
   | { ok: true; names: string[] }
   // needsLogin이면 화면이 "먼저 로그인하세요 + 로그인 페이지 열기"를 보여준다.

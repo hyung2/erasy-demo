@@ -17,6 +17,7 @@ import {
   EXTENSION_STORE_URL,
   onExtensionReady,
   probeLoginState,
+  watchLogin,
 } from '@/lib/extension-bridge';
 
 const PROVIDERS: Array<{
@@ -302,6 +303,17 @@ export default function ConnectionImport({
    * 가져와 본다 — 로그인 전이면 확장이 로그인 화면을 즉시 알아채고 끝내므로 조용히 실패한다.
    * 무한히 되풀이하지 않도록 세 번으로 끊는다.
    */
+  /**
+   * 로그인 단계에 있는 동안 확장에 "기다리는 중"을 등록한다. 다른 탭에서 그 제공사 로그인이
+   * 감지되면 확장이 이 탭을 앞으로 가져온다 — 돌아오는 걸음까지 사용자 몫으로 남기지 않는다.
+   * 구버전 확장은 신호를 모르고 무시하며, 그때는 직접 돌아온 시점의 감지가 이어받는다.
+   */
+  useEffect(() => {
+    if (stage !== 'login') return;
+    watchLogin(provider, true);
+    return () => watchLogin(provider, false);
+  }, [stage, provider]);
+
   useEffect(() => {
     if (stage !== 'login') return;
     let alive = true;

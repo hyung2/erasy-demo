@@ -35,6 +35,7 @@ function boot(openTabs: Array<{ id: number; url: string }>) {
   const reloaded: number[] = [];
   let queriedWith: unknown = null;
 
+  const focused: number[] = [];
   const chrome = {
     runtime: {
       lastError: null,
@@ -50,8 +51,13 @@ function boot(openTabs: Array<{ id: number; url: string }>) {
       reload: (id: number) => reloaded.push(id),
       create: () => Promise.resolve({ id: 1 }),
       remove: () => Promise.resolve(),
-      get: () => Promise.resolve({ url: '' }),
+      get: (id: number) => Promise.resolve({ id, url: '', windowId: 1 }),
+      update: (id: number, opts: { active?: boolean }) => {
+        if (opts?.active) focused.push(id);
+        return Promise.resolve({ id });
+      },
     },
+    windows: { update: () => Promise.resolve({}) },
     scripting: { executeScript: () => Promise.resolve([{ result: 0 }]) },
   };
 
@@ -65,10 +71,21 @@ function boot(openTabs: Array<{ id: number; url: string }>) {
     updated,
     messaged,
     reloaded,
+    focused,
     queried: () => queriedWith,
     /** 탭이 그 주소로 이동했다고 알린다. */
     visit(url: string) {
       for (const f of updated) f(1, { url }, { id: 1 });
+    },
+    /** 앱 탭(senderTabId)이 로그인 대기를 등록/해제한다. */
+    watch(provider: string, on: boolean, senderTabId: number | null) {
+      for (const f of messaged) {
+        f(
+          { type: 'erasy:loginWatch', provider, on },
+          senderTabId == null ? {} : { tab: { id: senderTabId } },
+          () => {},
+        );
+      }
     },
     /** 로그인 상태를 물어본다. */
     askLogin(provider: string): unknown {
@@ -94,7 +111,7 @@ function boot(openTabs: Array<{ id: number; url: string }>) {
 
 type LoginAnswer = { ok?: boolean; loggedIn?: boolean | null };
 
-function main(): void {
+async function main(): Promise<void> {
   const bg = readFileSync('extension/background.js', 'utf8');
   const bridge = readFileSync('extension/bridge.js', 'utf8');
   const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8')) as {
@@ -187,11 +204,62 @@ function main(): void {
     check((providers?.providers ?? []).length === 3, 'C11 기존 제공사 조회가 그대로 동작한다');
   }
 
+  // ── G. 로그인이 감지되면 앱 탭으로 데려오는가 ──
+  //   등록한 동안만·한 번만·자기 탭만. 셋 중 하나라도 무너지면 "탭을 마음대로 뺏는 확장"이 된다.
+  {
+    const app = boot([]);
+    const flush = () => new Promise((r) => setTimeout(r, 0)); // maybeReturnToApp이 async라 한 틱 기다린다
+
+    // 등록 전 로그인 — 아무 일도 안 일어나야 한다
+    app.visit('https://apps.kakao.com/connected/app/list?lang=ko');
+    await flush();
+    check(app.focused.length === 0, 'G1 등록 전에는 로그인에 반응하지 않는다');
+
+    // 등록 후 로그인 → 그 탭을 앞으로
+    app.watch('kakao', true, 77);
+    app.visit('https://apps.kakao.com/connected/app/list?lang=ko');
+    await flush();
+    check(app.focused.length === 1 && app.focused[0] === 77, `G2 등록한 탭(77)을 앞으로 가져온다 (${JSON.stringify(app.focused)})`);
+
+    // 한 번만 — 같은 로그인이 또 보여도 다시 뺏지 않는다
+    app.visit('https://apps.kakao.com/connected/app/list?lang=ko');
+    await flush();
+    check(app.focused.length === 1, 'G3 한 번 데려온 뒤에는 다시 반응하지 않는다');
+
+    // 다른 제공사 로그인에는 반응하지 않는다
+    app.watch('kakao', true, 77);
+    app.visit('https://nid.naver.com/internalToken/view/tokenList/pc/ko');
+    await flush();
+    check(app.focused.length === 1, 'G4 기다리는 제공사가 아니면 움직이지 않는다');
+
+    // 로그인 화면 진입(실패 방향)에는 반응하지 않는다
+    app.visit('https://accounts.kakao.com/login?continue=x');
+    await flush();
+    check(app.focused.length === 1, 'G5 로그인 "화면"은 로그인 완료가 아니다');
+
+    // 해제 후에는 반응하지 않는다
+    app.watch('kakao', false, 77);
+    app.visit('https://apps.kakao.com/connected/app/list?lang=ko');
+    await flush();
+    check(app.focused.length === 1, 'G6 해제하면 더는 데려오지 않는다');
+
+    // 보낸 탭이 불명이면 등록 자체가 안 된다 — 남의 탭을 지목하는 통로가 되면 안 된다
+    app.watch('kakao', true, null);
+    app.visit('https://apps.kakao.com/connected/app/list?lang=ko');
+    await flush();
+    check(app.focused.length === 1, 'G7 보낸 탭을 모르면 등록하지 않는다');
+  }
+
   // ── D. 앱과 확장 사이의 규약이 맞물리는가 ──
   {
     check(bridge.includes("'login-state'"), 'D1 브리지가 로그인 조회를 중계한다');
     check(bridge.includes("'erasy:loginState'"), 'D2 브리지가 백그라운드 규약 이름을 쓴다');
     check(bg.includes("'erasy:loginState'"), 'D3 백그라운드가 같은 이름으로 답한다');
+    check(
+      bridge.includes("'login-watch'") && bridge.includes("'erasy:loginWatch'") && bg.includes("'erasy:loginWatch'"),
+      'D3b 로그인 대기 등록도 같은 규약으로 오간다',
+    );
+    check(conn.includes('watchLogin'), 'D3c 앱이 로그인 단계에서 대기를 등록한다');
     check(
       /"version":\s*"0\.2\./.test(readFileSync('extension/manifest.json', 'utf8')),
       'D4 규약이 늘었으면 버전도 올라간다 — 앱이 구버전을 구분할 근거가 된다',
@@ -244,4 +312,4 @@ function main(): void {
   if (failed > 0) process.exitCode = 1;
 }
 
-main();
+void main();

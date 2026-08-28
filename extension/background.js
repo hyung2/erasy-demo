@@ -130,23 +130,57 @@ const SIGN_IN_PAGES = {
 };
 
 function noteTabUrl(url) {
-  if (typeof url !== 'string' || !url.startsWith('https://')) return;
+  if (typeof url !== 'string' || !url.startsWith('https://')) return null;
   for (const key of Object.keys(SIGN_IN_PAGES)) {
     if (SIGN_IN_PAGES[key].test(url)) {
       loginState[key] = false;
-      return;
+      return { provider: key, loggedIn: false };
     }
   }
   for (const key of Object.keys(SIGNED_IN_DOMAINS)) {
     if (SIGNED_IN_DOMAINS[key].test(url)) {
       loginState[key] = true;
-      return;
+      return { provider: key, loggedIn: true };
     }
+  }
+  return null;
+}
+
+/**
+ * 로그인을 기다리는 앱 탭 — 로그인이 감지되면 이 탭을 앞으로 가져온다.
+ *
+ * 왜: "다른 탭에서 로그인하고 돌아오면 화면이 바뀐다"에서 남은 마지막 걸음이 "돌아오기"다.
+ * 로그인은 이레이지를 위해 한 일이므로, 끝났으면 하던 화면으로 데려다 주는 것까지가 흐름이다.
+ *
+ * 함부로 하지 않기 위한 조건 세 가지:
+ *   - 앱이 "지금 이 제공사 로그인을 기다린다"고 등록한 동안만 (평소 카카오 로그인에 반응하면
+ *     브라우저를 우리 마음대로 쓰는 일이다)
+ *   - 한 번만 — 옮기고 나면 등록을 지운다
+ *   - 3분 지나면 무효 — 흐름을 접고 딴 일 하는 사람을 나중에 끌어오면 안 된다
+ *
+ * 서비스 워커가 잠들면 이 값도 사라진다. 그 경우 자동 복귀만 조용히 빠지고,
+ * 사용자가 직접 돌아오면 기존 감지(login-state 조회)가 그대로 이어받는다.
+ */
+let loginWatch = null; // { provider, tabId, expiresAt }
+const LOGIN_WATCH_TTL_MS = 3 * 60 * 1000;
+
+async function maybeReturnToApp(provider) {
+  const w = loginWatch;
+  if (!w || w.provider !== provider || Date.now() > w.expiresAt) return;
+  loginWatch = null; // 한 번만
+  try {
+    const tab = await chrome.tabs.get(w.tabId);
+    await chrome.tabs.update(w.tabId, { active: true });
+    if (tab?.windowId != null) await chrome.windows.update(tab.windowId, { focused: true });
+  } catch {
+    /* 탭이 이미 닫혔으면 데려갈 곳이 없다 — 그만둔다 */
   }
 }
 
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
-  if (changeInfo.url) noteTabUrl(changeInfo.url);
+  if (!changeInfo.url) return;
+  const seen = noteTabUrl(changeInfo.url);
+  if (seen?.loggedIn) void maybeReturnToApp(seen.provider);
 });
 
 /** 셀렉터와 대상 주소가 모두 확인된 제공사만 앱에 알린다. 둘 중 하나라도 없으면 열지 않는다. */
@@ -309,6 +343,17 @@ async function collect(providerKey) {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'erasy:providers') {
     sendResponse({ ok: true, providers: supportedProviders() });
+    return false;
+  }
+  if (msg?.type === 'erasy:loginWatch') {
+    // 등록은 보낸 탭 자신에게만 — 다른 탭을 지목해 앞으로 끌어오는 통로가 되면 안 된다.
+    const tabId = _sender?.tab?.id;
+    if (msg.on && tabId != null) {
+      loginWatch = { provider: msg.provider ?? 'google', tabId, expiresAt: Date.now() + LOGIN_WATCH_TTL_MS };
+    } else if (!msg.on && loginWatch?.tabId === tabId) {
+      loginWatch = null;
+    }
+    sendResponse({ ok: true });
     return false;
   }
   if (msg?.type === 'erasy:loginState') {
