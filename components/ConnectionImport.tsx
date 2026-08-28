@@ -19,24 +19,42 @@ import {
   probeLoginState,
 } from '@/lib/extension-bridge';
 
-const PROVIDERS: Array<{ id: ImportProvider; label: string; href: string; hint: string }> = [
+const PROVIDERS: Array<{
+  id: ImportProvider;
+  label: string;
+  href: string;
+  hint: string;
+  /**
+   * 로그인이 필요할 때 보내는 주소. 확장이 보내 주는 loginUrl을 쓰지 않고 여기 것을 쓴다 —
+   * 설치된 구버전 확장(0.1.0)이 카카오를 파라미터 없는 `/login`으로 보내는데, 카카오는
+   * continue 없는 로그인 요청을 400으로 튕긴다(2026-08-28 실측: 307 → /v2/error/400).
+   * 확장은 크롬이 알아서 올릴 때까지 옛 주소를 들고 있으므로, 앱이 덮어써야 오늘 고쳐진다.
+   * continue/url로 연결목록 화면을 지정해, 로그인이 끝나면 볼 일 있는 화면에 내려 준다.
+   */
+  loginHref: string;
+}> = [
   {
     id: 'google',
     label: '구글',
     href: 'https://myaccount.google.com/connections',
     hint: '보안 > 타사 앱 및 서비스 > 모든 연결 보기',
+    loginHref: 'https://accounts.google.com/signin',
   },
   {
     id: 'kakao',
     label: '카카오',
     href: 'https://accounts.kakao.com/weblogin/account/partner',
     hint: '카카오계정 > 연결된 서비스 관리',
+    // 링크 전용 주소는 loginHref와 같은 행에 둔다 — verify-csp-hosts가 행 단위로 href 여부를 판별한다.
+    loginHref: 'https://accounts.kakao.com/login?continue=' + encodeURIComponent('https://apps.kakao.com/connected/app/list?lang=ko&service_type=kakao'),
   },
   {
     id: 'naver',
     label: '네이버',
     href: 'https://nid.naver.com/user2/help/myInfo',
     hint: '네이버 내정보 > 외부 사이트 연결',
+    // 파라미터 없는 nidlogin.login은 봇 차단·오류 화면이 섞여 나온다(실측 503). url을 준다.
+    loginHref: 'https://nid.naver.com/nidlogin.login?url=' + encodeURIComponent('https://nid.naver.com/internalToken/view/tokenList/pc/ko'),
   },
 ];
 
@@ -513,7 +531,7 @@ export default function ConnectionImport({
           <div className="needs-login-actions">
             <a
               className="btn btn-primary ext-collect-cta"
-              href={needsLogin?.loginUrl ?? current.href}
+              href={current.loginHref}
               target="_blank"
               rel="noopener noreferrer"
             >

@@ -59,7 +59,8 @@ function main() {
     lines.forEach((line, i) => {
       const hosts = [...line.matchAll(URL_RE)].map((m) => m[1]);
       if (hosts.length === 0) return;
-      const isLink = line.includes('href');
+      // 대소문자 무시 — JSX/객체 속성은 camelCase(loginHref)라 소문자 검사만으로는 놓친다.
+      const isLink = /href/i.test(line);
       for (const host of hosts) {
         if (isLink) linked.add(host);
         else if (!fetched.has(host)) fetched.set(host, `${path}:${i + 1}`);

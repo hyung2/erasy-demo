@@ -28,9 +28,15 @@ const STEPS: {
   label: string;
   title: string;
   guide: string;
+  /**
+   * 이 단계**로 가는** 버튼에 적는 문구. "다음 · 카카오 찾기"처럼 조립하면 번역체가 되고,
+   * 무엇을 찾는지(간편가입 계정)가 문구에서 사라진다. 단계마다 자연스러운 문장을 직접 둔다.
+   */
+  cta: string;
 }[] = [
   {
     id: 'google',
+    cta: '구글 간편가입 계정 찾기',
     label: '구글',
     title: '구글로 가입한 서비스부터 찾을게요',
     guide:
@@ -38,6 +44,7 @@ const STEPS: {
   },
   {
     id: 'kakao',
+    cta: '카카오 간편가입 계정 찾기',
     label: '카카오',
     title: '카카오로 가입한 서비스를 찾을게요',
     guide:
@@ -45,12 +52,14 @@ const STEPS: {
   },
   {
     id: 'naver',
+    cta: '네이버 간편가입 계정 찾기',
     label: '네이버',
     title: '네이버로 가입한 서비스를 찾을게요',
     guide: '네이버 아이디로 로그인한 서비스 목록입니다.',
   },
   {
     id: 'mail',
+    cta: '메일함에서 가입 흔적 찾기',
     label: '메일함',
     title: '메일함에도 가입 흔적이 남아 있어요',
     guide:
@@ -177,9 +186,7 @@ function ScanningInner() {
             lockedProvider={step.id}
             onApplied={() => setApplied((p) => ({ ...p, [step.id]: true }))}
             onNext={goNext}
-            nextLabel={
-              isLast ? '찾은 계정 모두 보기' : `다음 · ${STEPS[index + 1].label} 찾기`
-            }
+            nextLabel={isLast ? '찾은 계정 모두 보기' : STEPS[index + 1].cta}
           />
         )}
 
@@ -194,13 +201,15 @@ function ScanningInner() {
                 ? '내 안전도 점수 보기'
                 : '건너뛰고 둘러보기'
               : applied[step.id]
-                ? `다음 · ${STEPS[index + 1].label}`
+                ? STEPS[index + 1].cta
                 : `${STEPS[index + 1].label} 먼저 하기`}
           </button>
+          {/* 이탈(나중에)은 다음 단계 버튼과 어깨를 나란히 두지 않는다 — 같은 행에 있으면
+              같은 무게의 선택지로 읽힌다. 행을 내리고 글자를 줄인다. */}
           {!isLast && (
             <button
               type="button"
-              className="linklike"
+              className="linklike onboard-later"
               onClick={leave}
             >
               나중에 하고 점수 보기

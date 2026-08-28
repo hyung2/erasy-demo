@@ -57,7 +57,11 @@ const PROVIDERS = {
     // 항목 안에 "상세보기 이동" 같은 보조 텍스트가 같이 들어 있어, 서비스명이 담긴
     // 요소를 직접 집는다.
     nameSelector: 'strong',
-    loginUrl: 'https://accounts.kakao.com/login',
+    // continue 없는 /login은 카카오가 400으로 튕긴다(실측 307 → /v2/error/400).
+    // 로그인 후 연결목록에 내려 주도록 continue를 붙인다.
+    loginUrl:
+      'https://accounts.kakao.com/login?continue=' +
+      encodeURIComponent('https://apps.kakao.com/connected/app/list?lang=ko&service_type=kakao'),
   },
   naver: {
     label: '네이버',
@@ -69,7 +73,10 @@ const PROVIDERS = {
     // 이 제품에서 오탐은 "없는 계정을 있다고 말하는 것"이라 미발견보다 나쁘다.
     urls: ['https://nid.naver.com/internalToken/view/tokenList/pc/ko'],
     selector: 'strong.service_title',
-    loginUrl: 'https://nid.naver.com/nidlogin.login',
+    // 파라미터 없는 nidlogin.login은 오류 화면이 섞여 나온다(실측 503). url로 목록 화면을 준다.
+    loginUrl:
+      'https://nid.naver.com/nidlogin.login?url=' +
+      encodeURIComponent('https://nid.naver.com/internalToken/view/tokenList/pc/ko'),
   },
 };
 
