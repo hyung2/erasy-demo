@@ -15,7 +15,8 @@ import {
   computeThreat,
   blend,
   measuredWeight,
-  confidenceCap,
+  unmeasuredPenalty,
+  SCORE_V2_PARAMS,
   applyAction,
   deriveGrade,
   type ScoreRowV2,
@@ -172,9 +173,18 @@ eq(egPw?.expectedGain, 22, 'expectedGain(비번교체) = +22');
 function synthAxis(key: AxisScore['key'], score: number): AxisScore {
   return { key, score, measured: true, coveredCount: 1, totalCount: 1, coverage: 1, topFinding: null };
 }
-/** 재지 못한 축. 신뢰 상한(5.5) 검증에서 W를 깎는 쪽으로 쓴다. */
+/** 재지 못한 축. 미측정 감점(5.5) 검증에서 W를 깎는 쪽으로 쓴다. */
 function unmeasuredAxis(key: AxisScore['key']): AxisScore {
   return { key, score: null, measured: false, coveredCount: 0, totalCount: 0, coverage: 0, topFinding: null };
+}
+/** 감점 이전 산식(재정규화만). 상승폭이 감쇠되지 않았는지 대조하는 기준선이다. */
+function uncappedComposite(axes: AxisScore[]): number {
+  const P = SCORE_V2_PARAMS;
+  const m = axes.filter((a) => a.measured && a.score !== null);
+  const tw = m.reduce((s, a) => s + P.weights[a.key], 0);
+  const wa = m.reduce((s, a) => s + P.weights[a.key] * (a.score as number), 0) / tw;
+  const worst = Math.min(...m.map((a) => a.score as number));
+  return Math.round((1 - P.lambda) * wa + P.lambda * worst);
 }
 const AKEYS: AxisScore['key'][] = ['exposure', 'surface', 'hygiene', 'threat'];
 
@@ -198,15 +208,17 @@ for (const x of [37, 55, 72, 88]) {
 // 3-3. 전축 100 → 100 (W=1 → 신뢰 상한 해제)
 eq(blend(AKEYS.map((k) => synthAxis(k, 100))).composite, 100, '전축 100 → 종합 100');
 
-// 3-5. 신뢰 상한(SSOT 5.5) — 못 잰 축의 몫이 잰 축으로 넘어가 100 가까이 뜨던 것을 막는다.
+// 3-5. 미측정 감점(SSOT 5.5) — 못 잰 축의 몫이 잰 축으로 넘어가 100 가까이 뜨던 것을 막는다.
 {
-  // W=1이면 상한 100 — 4축 다 잰 결과는 건드리지 않는다(회귀 방지의 핵심).
+  // W=1이면 감점 0 — 4축 다 잰 결과는 건드리지 않는다(회귀 방지의 핵심).
   eq(measuredWeight(AKEYS.map((k) => synthAxis(k, 100))), 1, 'W: 4축 측정 → 1.00');
-  eq(confidenceCap(1), 100, 'cap(1.00) = 100 — 상한 해제');
-  eq(confidenceCap(0.55), 77.5, 'cap(0.55) = 77.5');
-  eq(confidenceCap(0.2), 60, 'cap(0.20) = 60');
+  // 감점은 float 산출이라 허용오차로 본다(0.45 같은 값이 이진수로 정확히 떨어지지 않는다).
+  const near = (a: number, b: number, msg: string) => check(Math.abs(a - b) < 1e-9, msg);
+  near(unmeasuredPenalty(1), 0, '감점(W=1.00) = 0 — 전축 측정은 무감점');
+  near(unmeasuredPenalty(0.55), 27, '감점(W=0.55) = 27');
+  near(unmeasuredPenalty(0.2), 48, '감점(W=0.20) = 48');
 
-  // 실사용자 구간 재현: E·S만 측정(W=0.55). 상한 없으면 E=100·S=86에서 91이 나오던 자리.
+  // 실사용자 구간 재현: E·S만 측정(W=0.55). 감점 없으면 E=100·S=86에서 91이 나오던 자리.
   const es = [
     synthAxis('exposure', 100),
     synthAxis('surface', 86),
@@ -215,8 +227,8 @@ eq(blend(AKEYS.map((k) => synthAxis(k, 100))).composite, 100, '전축 100 → �
   ];
   const b = blend(es);
   eq(b.measuredWeight, 0.55, 'W: E·S만 측정 → 0.55');
-  eq(b.composite, 78, 'E=100·S=86, W=0.55 → 상한 78(무상한이면 91)');
-  check((b.composite as number) < 80, '상한 구간은 양호 밴드(80+)에 들지 못한다');
+  eq(b.composite, 64, 'E=100·S=86, W=0.55 → 64(무감점이면 91)');
+  check((b.composite as number) < 80, '미측정 구간은 양호 밴드(80+)에 들지 못한다');
 
   // S축 단독 100 — 확인 버튼으로 감점 인자가 사라져 100점이 되던 경로.
   const sOnly = blend([
@@ -225,16 +237,42 @@ eq(blend(AKEYS.map((k) => synthAxis(k, 100))).composite, 100, '전축 100 → �
     unmeasuredAxis('hygiene'),
     unmeasuredAxis('threat'),
   ]);
-  eq(sOnly.composite, 60, 'S 단독 100 → 상한 60(무상한이면 100)');
+  eq(sOnly.composite, 52, 'S 단독 100 → 52(무감점이면 100)');
 
-  // 상한은 아래를 끌어올리지 않는다 — 이미 낮은 점수는 그대로.
-  const low = blend([
-    synthAxis('exposure', 20),
+  // 바닥 clamp — 감점이 raw보다 커도 음수로 내려가지 않는다.
+  const floor = blend([
+    unmeasuredAxis('exposure'),
     synthAxis('surface', 30),
     unmeasuredAxis('hygiene'),
     unmeasuredAxis('threat'),
   ]);
-  check((low.composite as number) < 30, `상한은 하한이 아니다 — 낮은 점수 불변(${low.composite})`);
+  eq(floor.composite, 0, 'raw 30 − 감점 48 → 0으로 clamp(음수 없음)');
+
+  /**
+   * 상승폭 보존 — 이 구조를 택한 이유 그 자체다.
+   *
+   * 상한(min)으로 눌렀을 때는 before·after가 같은 천장에 붙어 조치 상승폭이 전부 0이
+   * 됐다. 화면의 "정리를 끝내면 몇 점" 줄이 사라지고 추천 액션이 +0점이 됐다
+   * (2026-08-28 상한 배포에서 실제 발생). 뺄셈은 양쪽에 같은 값이 걸려 상쇄되므로
+   * 상승폭이 raw 그대로 남는다. 이 단언이 깨지면 그 회귀가 돌아온 것이다.
+   */
+  const beforeAxes = [
+    synthAxis('exposure', 80),
+    synthAxis('surface', 88),
+    unmeasuredAxis('hygiene'),
+    unmeasuredAxis('threat'),
+  ];
+  const afterAxes = [
+    synthAxis('exposure', 80),
+    synthAxis('surface', 98),
+    unmeasuredAxis('hygiene'),
+    unmeasuredAxis('threat'),
+  ];
+  const gain = (blend(afterAxes).composite as number) - (blend(beforeAxes).composite as number);
+  check(gain > 0, `상승폭 보존: 미측정 구간에서도 조치가 점수를 올린다(+${gain})`);
+  // 감점은 before·after 동일(W 불변)이므로 상승폭은 무감점 산식과 같아야 한다.
+  const rawGain = uncappedComposite(afterAxes) - uncappedComposite(beforeAxes);
+  eq(gain, rawGain, `상승폭이 감쇠되지 않는다 — 감점 전후 동일(+${gain})`);
 }
 
 // 3-4. 가중평균 단독보다 낮거나 같음(최약축 끌어내림) — 앵커로 검증

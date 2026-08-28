@@ -27,9 +27,10 @@ export const SCORE_V2_PARAMS = {
   // 종합 블렌드
   weights: { exposure: 0.35, hygiene: 0.3, surface: 0.2, threat: 0.15 },
   lambda: 0.45, // 최약축 혼합 비중 — 마스킹 차단 보장 최소값(>0.412)에서 여유
-  // 신뢰 상한의 바닥. 아무 축도 재지 못한 세계의 상한이고, 4축을 다 재면 상한이 100으로 풀린다.
-  //   cap = base + (100 − base) × 측정가중치합. 50이면 1축(0.2)만 잰 상태의 상한이 60이다.
-  confidenceCapBase: 50,
+  // 못 잰 비중에 매기는 정액 감점의 최대치. 감점 = P × (1 − 측정가중치합).
+  //   4축을 다 재면 (1−W)=0이라 감점이 사라져 기존 산식과 완전히 같다.
+  //   상한(clamp) 대신 뺄셈인 이유는 unmeasuredPenalty 주석 참조.
+  unmeasuredPenalty: 60,
   // 등급 배지·안심 카피를 내보낼 최소 측정 가중치. 0.8은 "작은 축 하나까지만 빠진 상태"다
   //   — T(0.15)만 미측정이면 0.85로 통과하고, H(0.30)가 빠지면 0.70으로 걸린다.
   confidenceDisplayFloor: 0.8,
@@ -430,23 +431,32 @@ export function measuredWeight(
 }
 
 /**
- * 측정 가중치 합에 따른 종합 상한.
+ * 못 잰 비중에 매기는 감점. P × (1 − W).
  *
  * 재정규화만 하면 못 잰 축의 몫이 잰 축으로 통째로 넘어간다. 유출만 대조하고 유출이
  * 없었던 사람은 그 한 축이 실효 가중치를 독점해 종합이 100 가까이 뜬다 — 비밀번호도
  * 접속 기록도 본 적이 없는데 화면은 "안전한 상태"라고 말한다(2026-08-28 실측: 실사용자
  * 4명 전원 측정 가중치 0.55, 그중 3명이 양호 등급).
  *
- * 못 잰 축을 0점으로 깔면 모르는 것을 최악으로 단정하게 되므로 그 길은 택하지 않는다.
- * 대신 **모르는 만큼 높은 점수를 주장하지 않는다**. 미측정은 여전히 감점이 아니고,
- * 다만 안심의 근거로도 쓰이지 않는다.
+ * 못 잰 축을 0점으로 깔면 모르는 것을 최악으로 단정하게 된다. 그래서 축을 채우는 대신
+ * **못 잰 비중만큼 종합에서 덜어낸다**. 미측정은 여전히 축 점수가 아니고, 다만 안심의
+ * 근거로도 쓰이지 않는다.
+ *
+ * 상한(min)이 아니라 뺄셈인 이유가 있다. 상한은 그 위의 모든 사람을 한 값에 붙여
+ * 평평한 천장을 만든다. 그러면 "정리를 끝내면 몇 점"과 조치별 상승폭이 전부 0이 되어,
+ * 점수를 낮춰 행동을 부르려던 것이 정반대로 행동의 보상을 지워 버린다
+ * (2026-08-28 상한 배포에서 실제로 발생 — 투영 줄 소멸·기대상승 전부 +0).
+ *
+ * 뺄셈은 before·after에 같은 값이 걸려 상쇄되므로 **상승폭이 raw 그대로 살아난다**.
+ * 덤으로 축을 하나 재게 되면 W가 올라 감점 자체가 줄어드니, 알려주기가 가장 큰
+ * 상승 레버가 되고 그 사실이 숫자로 드러난다.
  */
-export function confidenceCap(weight: number): number {
-  const base = SCORE_V2_PARAMS.confidenceCapBase;
-  return base + (100 - base) * Math.max(0, Math.min(1, weight));
+export function unmeasuredPenalty(weight: number): number {
+  const w = Math.max(0, Math.min(1, weight));
+  return SCORE_V2_PARAMS.unmeasuredPenalty * (1 - w);
 }
 
-// ── 5. 종합 블렌드: (1−λ)×WA + λ×worst, 측정 축만 재정규화 + 신뢰 상한 ──
+// ── 5. 종합 블렌드: (1−λ)×WA + λ×worst, 측정 축만 재정규화 − 미측정 감점 ──
 export function blend(axes: AxisScore[]): {
   composite: number | null;
   weakestAxis: AxisKey | null;
@@ -476,9 +486,9 @@ export function blend(axes: AxisScore[]): {
   }
 
   const raw = (1 - P.lambda) * wa + P.lambda * worst;
-  // 상한도 raw 도메인에서 건다 — 이 파일의 원칙대로 반올림은 마지막 한 번뿐이다(머리말 참조).
-  const capped = Math.min(raw, confidenceCap(totalW));
-  const composite = Math.max(0, Math.min(100, Math.round(capped)));
+  // 감점도 raw 도메인에서 건다 — 이 파일의 원칙대로 반올림은 마지막 한 번뿐이다(머리말 참조).
+  const adjusted = raw - unmeasuredPenalty(totalW);
+  const composite = Math.max(0, Math.min(100, Math.round(adjusted)));
   return { composite, weakestAxis: weakest.key, measured: true, measuredWeight: totalW };
 }
 
